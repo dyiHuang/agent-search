@@ -19,6 +19,8 @@ from transformers import Qwen2Config
 from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
+
+import utils
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
 
 import core_algos
@@ -224,6 +226,7 @@ class Qwen2MegatronModel(nn.Module):
             if only_last_token:
                 logits = logits[:, -1:]  # [batch, 1, vocab_size/tp_size]
 
+            logits = logits.float()
             return logits
         return hidden_states
 
@@ -353,6 +356,7 @@ class Qwen2MegatronModel(nn.Module):
         """
         # broadcast from last pp rank to all other pp ranks
         # TODO: actually, we just need to control the sampling order.
+        batch = batch.contiguous()
         torch.distributed.broadcast(
             batch,
             src=parallel_state.get_pipeline_model_parallel_last_rank(),
@@ -430,7 +434,6 @@ class Qwen2MegatronModel(nn.Module):
                 # hidden_size=self.model_config.hidden_size,
                 micro_batch_size=self.micro_batch_size,
                 forward_only=forward_only,
-                collect_non_loss_data=True,
             )
         else:
             losses_reduced = forward_backward_func(
@@ -442,7 +445,6 @@ class Qwen2MegatronModel(nn.Module):
                 # hidden_size=self.model_config.hidden_size,
                 micro_batch_size=self.micro_batch_size,
                 forward_only=forward_only,
-                collect_non_loss_data=True,
             )
         # loss_reduces contains the stats returned from loss_func
         return losses_reduced
@@ -506,109 +508,6 @@ class Qwen2MegatronModel(nn.Module):
         return logits
 
 
-def load_megatron_weights(megatron_model: Qwen2MegatronModel, hf_model: Qwen2ForCausalLM):
-    """将 Hugging Face 的权重映射到 Megatron 模型"""
-    hf_state_dict = hf_model.state_dict()
-    megatron_state_dict = megatron_model.state_dict()
-
-    # 手动映射关键参数（示例，需根据实际层名补全）
-    weight_maps = {
-        # 嵌入层
-        "embed_tokens.weight": "embedding.weight",
-        # 顶层归一化（模型最后一层的层归一化）
-        "model.norm.weight": "final_norm.weight",
-        "model.norm.bias": "final_norm.bias",
-        # 输出层（语言模型头）
-        "lm_head.weight": "lm_head.weight",
-        "lm_head.bias": "lm_head.bias",
-
-        # 每层输入层归一化（已提供，补充偏置项）
-        "model.layers.{}.input_layernorm.weight": "layers.{}.input_layernorm.weight",
-        "model.layers.{}.input_layernorm.bias": "layers.{}.input_layernorm.bias",
-
-        # 自注意力层（已提供，补充偏置项）
-        "model.layers.{}.self_attn.q_proj.weight": "layers.{}.self_attention.linear_qkv.weight",
-        "model.layers.{}.self_attn.q_proj.bias": "layers.{}.self_attention.linear_qkv.bias",
-        "model.layers.{}.self_attn.k_proj.weight": "layers.{}.self_attention.linear_qkv.weight",
-        "model.layers.{}.self_attn.k_proj.bias": "layers.{}.self_attention.linear_qkv.bias",
-        "model.layers.{}.self_attn.v_proj.weight": "layers.{}.self_attention.linear_qkv.weight",
-        "model.layers.{}.self_attn.v_proj.bias": "layers.{}.self_attention.linear_qkv.bias",
-        "model.layers.{}.self_attn.o_proj.weight": "layers.{}.self_attention.linear_proj.weight",
-        "model.layers.{}.self_attn.o_proj.bias": "layers.{}.self_attention.linear_proj.bias",
-
-        # 每层注意力后层归一化（Qwen2.5 必备，补充 weight + bias）
-        "model.layers.{}.post_attention_layernorm.weight": "layers.{}.pre_mlp_layernorm.weight",
-        "model.layers.{}.post_attention_layernorm.bias": "layers.{}.pre_mlp_layernorm.bias",
-
-        # MLP 层核心参数（Qwen2.5 用 SwishGLU，含 gate_proj/up_proj/down_proj）
-        "model.layers.{}.mlp.gate_proj.weight": "layers.{}.mlp.linear_fc1.weight",
-        "model.layers.{}.mlp.gate_proj.bias": "layers.{}.mlp.linear_fc1.bias",
-        "model.layers.{}.mlp.up_proj.weight": "layers.{}.mlp.linear_fc1.weight",
-        "model.layers.{}.mlp.up_proj.bias": "layers.{}.mlp.linear_fc1.bias",
-        "model.layers.{}.mlp.down_proj.weight": "layers.{}.mlp.linear_fc2.weight",
-        "model.layers.{}.mlp.down_proj.bias": "layers.{}.mlp.linear_fc2.bias",
-
-        # 可选：Qwen2.5 部分版本可能有 MLP 层的激活函数相关参数（若有则补充）
-        # "model.layers.{}.mlp.act_fn.weight": "layers.{}.mlp.act_fn.weight",  # 极少情况需启用
-    }
-
-    for hf_key, megatron_key_template in weight_maps.items():
-        for layer_idx in range(megatron_model.num_layers):
-            if "{}.{}." in hf_key:
-                hf_key_layer = hf_key.format(layer_idx)
-                megatron_key = megatron_key_template.format(layer_idx)
-            else:
-                hf_key_layer = hf_key
-                megatron_key = megatron_key_template
-
-            if hf_key_layer in hf_state_dict and megatron_key in megatron_state_dict:
-                if ".q_proj." in hf_key_layer and ".linear_qkv." in megatron_key:
-                    q_proj_dim = hf_state_dict[hf_key_layer].shape[-1]
-                    assert megatron_state_dict[megatron_key].shape[-1] == 3 * q_proj_dim, \
-                        (f"megatron_state_dict[megatron_key] 最后一维不是 q_proj_dim 的 3 倍！hf_state_dict["
-                         f"hf_key_layer] 最后一维：{q_proj_dim}, megatron_state_dict["
-                         f"megatron_key] 最后一维：{megatron_state_dict[megatron_key].shape[-1]}")
-                    megatron_state_dict[megatron_key][..., :q_proj_dim].copy_(
-                        hf_state_dict[hf_key_layer].to(torch.float16))
-                elif ".k_proj." in hf_key_layer and ".linear_qkv." in megatron_key:
-                    k_proj_dim = hf_state_dict[hf_key_layer].shape[-1]
-                    assert megatron_state_dict[megatron_key].shape[-1] == 3 * k_proj_dim, \
-                        (f"megatron_state_dict[megatron_key] 最后一维不是 k_proj_dim 的 3 倍！hf_state_dict["
-                         f"hf_key_layer] 最后一维：{k_proj_dim}, megatron_state_dict["
-                         f"megatron_key] 最后一维：{megatron_state_dict[megatron_key].shape[-1]}")
-                    megatron_state_dict[megatron_key][..., k_proj_dim:2 * k_proj_dim].copy_(
-                        hf_state_dict[hf_key_layer].to(torch.float16))
-                elif ".v_proj." in hf_key_layer and ".linear_qkv." in megatron_key:
-                    v_proj_dim = hf_state_dict[hf_key_layer].shape[-1]
-                    assert megatron_state_dict[megatron_key].shape[-1] == 3 * v_proj_dim, \
-                        (f"megatron_state_dict[megatron_key] 最后一维不是 v_proj_dim 的 3 倍！hf_state_dict["
-                         f"hf_key_layer] 最后一维：{v_proj_dim}, megatron_state_dict["
-                         f"megatron_key] 最后一维：{megatron_state_dict[megatron_key].shape[-1]}")
-                    megatron_state_dict[megatron_key][..., 2 * v_proj_dim:].copy_(
-                        hf_state_dict[hf_key_layer].to(torch.float16))
-                elif ".mlp.gate_proj." in hf_key_layer and ".linear_fc1." in megatron_key:
-                    gate_proj_dim = hf_state_dict[hf_key_layer].shape[-1]
-                    assert megatron_state_dict[megatron_key].shape[-1] == 2 * gate_proj_dim, \
-                        (f"megatron_state_dict[megatron_key] 最后一维不是 q_proj_dim 的 2 倍！hf_state_dict["
-                         f"hf_key_layer] 最后一维：{gate_proj_dim}, megatron_state_dict["
-                         f"megatron_key] 最后一维：{megatron_state_dict[megatron_key].shape[-1]}")
-                    megatron_state_dict[megatron_key][..., :gate_proj_dim].copy_(
-                        hf_state_dict[hf_key_layer].to(torch.float16))
-                elif ".mlp.up_proj." in hf_key_layer and ".linear_fc1." in megatron_key:
-                    gup_proj_dim = hf_state_dict[hf_key_layer].shape[-1]
-                    assert megatron_state_dict[megatron_key].shape[-1] == 2 * gup_proj_dim, \
-                        (f"megatron_state_dict[megatron_key] 最后一维不是 gup_proj_dim 的 2 倍！hf_state_dict["
-                         f"hf_key_layer] 最后一维：{gup_proj_dim}, megatron_state_dict["
-                         f"megatron_key] 最后一维：{megatron_state_dict[megatron_key].shape[-1]}")
-                    megatron_state_dict[megatron_key][..., gup_proj_dim:].copy_(
-                        hf_state_dict[hf_key_layer].to(torch.float16))
-                else:
-                    # 处理 Tensor Parallel 权重分片（Megatron 自动处理，只需复制对应分片）
-                    megatron_state_dict[megatron_key].copy_(hf_state_dict[hf_key_layer].to(torch.float16))
-
-    print("权重加载完成")
-
-
 class Qwen2MegatronCritic(Qwen2MegatronModel):
     """PPO Critic模型（价值网络），兼容Megatron TP并行"""
 
@@ -631,13 +530,10 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         self.value_head = None
         if self.pp_rank == self.pp_size - 1:
             self.lm_head = None
-            self.value_head = tensor_parallel.ColumnParallelLinear(
-                input_size=self.hidden_size,
-                output_size=1,  # 输出标量价值
-                config=megatron_config,
-                bias=use_bias,
-                init_method=self.config.init_method,  # 复用Actor的初始化方式
-                skip_bias_add=False  # 保留偏置独立计算（价值预测无需和其他特征叠加）
+            self.value_head = nn.Linear(
+                in_features=self.hidden_size,
+                out_features=1,  # 输出标量价值
+                bias=False,
             )
 
             # 初始化分类头（可选：若从预训练模型加载，可跳过；若随机初始化，建议用Xavier）
@@ -714,9 +610,90 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 value_preds = nn.functional.layer_norm(
                     value_preds, normalized_shape=value_preds.shape[1:], eps=1e-5
                 )
+            value_preds = value_preds.float()
             return value_preds
 
         return hidden_states
+
+    def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
+                               forward_only=False, post_process_fn=None, meta_info: Dict = None):
+        # broadcast from last pp rank to all other pp ranks
+        batch = batch.contiguous()
+        torch.distributed.broadcast_dict_tensor(batch,
+                                                src=parallel_state.get_pipeline_model_parallel_last_rank(),
+                                                group=parallel_state.get_pipeline_model_parallel_group())
+        # split into micro-batches
+        batch['attention_mask'] = batch['attention_mask'].to(bool)
+        batches = self.split_dict_tensor_into_batches(batch, batch_size=self.micro_batch_size)
+        n_micro_batch = len(batches)
+        seq_len = batches[0]['input_ids'].shape[1]
+
+        forward_backward_func = pipeline_parallel.get_forward_backward_func()
+
+        def loss_func(output, data):
+            if forward_only:
+                return 1.0, output
+
+            responses = data['responses']
+            attention_mask = data['attention_mask']
+            values = data['values']
+            returns = data['returns']
+            response_length = responses.size(1)
+
+            eos_mask = attention_mask[:, -response_length:]
+
+            cliprange_value = meta_info['cliprange_value']
+
+            vpreds = output.logits  # (bs, sequence_length)
+            vpreds = vpreds[:, -response_length - 1:-1]
+
+            vf_loss, vf_clipfrac = core_algos.compute_value_loss(vpreds=vpreds,
+                                                                 values=values,
+                                                                 returns=returns,
+                                                                 eos_mask=eos_mask,
+                                                                 cliprange_value=cliprange_value)
+            stats = {
+                'critic/vf_loss': vf_loss.detach().item(),
+                'critic/vf_clipfrac': vf_clipfrac.detach().item(),
+                'critic/vpred_mean': utils.masked_mean(vpreds, eos_mask).detach().item(),
+            }
+
+            return vf_loss, stats
+
+        def forward_step(batch_iter, model):
+            micro_batch = next(batch_iter)
+            output = model(input_ids=micro_batch["input_ids"], attention_mask=micro_batch["attention_mask"],
+                           only_last_token=only_last_token)
+            return output, partial(loss_func, data=batch, meta_info={})
+
+        # batch should be a list of batches inside micro-batches
+        batch_generator = self.make_batch_generator(batches, vpp_size=len(self.critic_module))
+
+        # for flash-attn: (seq_len, batch_size, hidden_size) = (mbs*seq_len, 1, hidden_size)
+        if parallel_state.get_pipeline_model_parallel_world_size() > 1:
+            losses_reduced = forward_backward_func(
+                forward_step_func=forward_step,
+                data_iterator=batch_generator,
+                model=self,
+                num_microbatches=n_micro_batch,
+                seq_length=seq_len,
+                # hidden_size=self.model_config.hidden_size,
+                micro_batch_size=self.micro_batch_size,
+                forward_only=forward_only,
+            )
+        else:
+            losses_reduced = forward_backward_func(
+                forward_step_func=forward_step,
+                data_iterator=batch_generator,
+                model=self,
+                num_microbatches=n_micro_batch,
+                seq_length=seq_len,
+                # hidden_size=self.model_config.hidden_size,
+                micro_batch_size=self.micro_batch_size,
+                forward_only=forward_only,
+            )
+        # loss_reduces contains the stats returned from loss_func
+        return losses_reduced
 
 
 def build_qwen2_megatron_model(qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \

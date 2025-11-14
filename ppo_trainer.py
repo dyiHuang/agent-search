@@ -11,16 +11,19 @@ from megatron.core.optimizer import DistributedOptimizer
 
 import tensordict
 from tensordict import TensorDict
+from tensor_parallel import vocab_parallel_log_probs_from_logits
 
 import core_algos
-import utils
+from utils import utils
 from modeling_qwen_megatron import build_qwen2_megatron_model
+from omegaconf import OmegaConf, open_dict
+import reward_score
 
 
 class MegatronDeepSpeedPPOTrainer:
-    def __init__(self, args):
-        self.args = args
-        self.tokenizer = AutoTokenizer.from_pretrained(args.qwen_model_path)
+    def __init__(self, config):
+        self.config = config
+        self.tokenizer = AutoTokenizer.from_pretrained(config.qwen_model_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
@@ -28,18 +31,18 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 2. 配置 LoRa
         self.lora_config = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
+            r=config.lora_r,
+            lora_alpha=config.lora_alpha,
             target_modules=[],
-            lora_dropout=args.lora_dropout,
+            lora_dropout=config.lora_dropout,
             bias="none",
             task_type="CAUSAL_LM"
         )
 
         # 3. 构建 PPO 三模型
-        self.actor = build_qwen2_megatron_model(args.qwen_model_path, lora_config=self.lora_config)
-        self.critic = build_qwen2_megatron_model(args.qwen_model_path, lora_config=self.lora_config, is_critic=True)
-        self.reference = build_qwen2_megatron_model(args.qwen_model_path)
+        self.actor = build_qwen2_megatron_model(config.qwen_model_path, lora_config=self.lora_config)
+        self.critic = build_qwen2_megatron_model(config.qwen_model_path, lora_config=self.lora_config, is_critic=True)
+        self.reference = build_qwen2_megatron_model(config.qwen_model_path)
         self.reference.eval()
         for param in self.reference.parameters():
             param.requires_grad = False
@@ -48,14 +51,14 @@ class MegatronDeepSpeedPPOTrainer:
         self._init_deepspeed()
 
         # 5. 加载数据集（分布式采样）
-        self.dataset = self._load_dataset()
+        self._create_dataloader()
 
     def _init_distributed(self):
         """初始化 Megatron + Deepspeed 分布式环境"""
         deepspeed.init_distributed(dist_backend="nccl")
         parallel_state.initialize_model_parallel(
-            tensor_model_parallel_size=self.args.tp_size if self.args.tp_size > 1 else 1,
-            pipeline_model_parallel_size=self.args.pp_size if self.args.pp_size > 1 else 1,
+            tensor_model_parallel_size=self.config.tp_size if self.config.tp_size > 1 else 1,
+            pipeline_model_parallel_size=self.config.pp_size if self.config.pp_size > 1 else 1,
         )
 
     def _init_deepspeed(self):
@@ -63,13 +66,13 @@ class MegatronDeepSpeedPPOTrainer:
         # 优化配置
         optimizer = torch.optim.AdamW(
             self.actor.parameters(),
-            lr=self.args.learning_rate,
+            lr=self.config.learning_rate,
             betas=(0.9, 0.95),
             weight_decay=0.01
         )
 
         # DeepSpeed 配置（从 JSON 加载）
-        ds_config = deepspeed.DeepSpeedConfig(self.args.ds_config_file)
+        ds_config = deepspeed.DeepSpeedConfig(self.config.ds_config_file)
 
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
@@ -82,7 +85,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 优化配置
         critic_optimizer = torch.optim.AdamW(
             self.critic.parameters(),
-            lr=self.args.learning_rate,
+            lr=self.config.learning_rate,
         )
         self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
             model=self.critic,
@@ -91,43 +94,111 @@ class MegatronDeepSpeedPPOTrainer:
             model_parameters=self.critic.parameters()
         )
 
-    def _load_dataset(self):
-        """加载分布式数据集（每个 rank 处理部分数据）"""
-        dataset = load_dataset("json", data_files=self.args.data_file, split="train")
-        # 分布式采样器
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-        dataloader = DataLoader(dataset, sampler=sampler, batch_size=self.args.batch_size, shuffle=False)
-        return dataloader
+    # def _load_dataset(self):
+    #     """加载分布式数据集（每个 rank 处理部分数据）"""
+    #     dataset = load_dataset("json", data_files=self.config.data_file, split="train")
+    #     # 分布式采样器
+    #     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    #     dataloader = DataLoader(dataset, sampler=sampler, batch_size=self.config.batch_size, shuffle=False)
+    #     return dataloader
+
+    def _create_dataloader(self):
+        from torch.utils.data import DataLoader
+        # TODO: we have to make sure the batch size is divisible by the dp size
+        from dataset.rl_dataset import RLHFDataset, collate_fn
+        self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files,
+                                         tokenizer=self.tokenizer,
+                                         prompt_key=self.config.data.prompt_key,
+                                         max_prompt_length=self.config.data.max_prompt_length,
+                                         filter_prompts=True,
+                                         return_raw_chat=self.config.data.get('return_raw_chat', False),
+                                         truncation='error')
+        if self.config.data.train_data_num is not None:
+            if self.config.data.train_data_num > len(self.train_dataset.dataframe):
+                print(
+                    f"[WARNING] training dataset size is smaller than desired size. Using the dataset as the original size {len(self.train_dataset.dataframe)}")
+            else:
+                self.train_dataset.dataframe = self.train_dataset.dataframe.sample(self.config.data.train_data_num,
+                                                                                   random_state=42)
+        print(f"filtered training dataset size: {len(self.train_dataset.dataframe)}")
+
+        self.train_dataloader = DataLoader(dataset=self.train_dataset,
+                                           batch_size=self.config.data.train_batch_size,
+                                           shuffle=self.config.data.shuffle_train_dataloader,
+                                           drop_last=True,
+                                           collate_fn=collate_fn)
+
+        self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files,
+                                       tokenizer=self.tokenizer,
+                                       prompt_key=self.config.data.prompt_key,
+                                       max_prompt_length=self.config.data.max_prompt_length,
+                                       filter_prompts=True,
+                                       return_raw_chat=self.config.data.get('return_raw_chat', False),
+                                       truncation='error')
+        if self.config.data.val_data_num is not None:
+            if self.config.data.val_data_num > len(self.val_dataset.dataframe):
+                print(
+                    f"[WARNING] validation dataset size is smaller than desired size. Using the dataset as the original size {len(self.val_dataset.dataframe)}")
+            else:
+                self.val_dataset.dataframe = self.val_dataset.dataframe.sample(self.config.data.val_data_num,
+                                                                               random_state=42)
+        print(f"filtered validation dataset size: {len(self.val_dataset.dataframe)}")
+
+        self.val_dataloader = DataLoader(dataset=self.val_dataset,
+                                         batch_size=self.config.data.val_batch_size,
+                                         shuffle=False,
+                                         drop_last=True,
+                                         collate_fn=collate_fn)
+
+        print(f'Size of train dataloader: {len(self.train_dataloader)}')
+        print(f'Size of val dataloader: {len(self.val_dataloader)}')
+
+        assert len(self.train_dataloader) >= 1
+        assert len(self.val_dataloader) >= 1
+
+        # inject total_training_steps to actor/critic optim_config. This is hacky.
+        total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
+
+        if self.config.trainer.total_training_steps is not None:
+            total_training_steps = self.config.trainer.total_training_steps
+
+        self.total_training_steps = total_training_steps
+        print(f'Total training steps: {self.total_training_steps}')
+
+        OmegaConf.set_struct(self.config, True)
+        with open_dict(self.config):
+            self.config.actor_rollout_ref.actor.optim.total_training_steps = total_training_steps
+            self.config.critic.optim.total_training_steps = total_training_steps
 
     def _rollout(self, batch):
         """Rollout阶段：生成 response 并计算 log prob（分布式采用）"""
-        prompts = batch["prompt"]
-        inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"].to(self.actor.device)
+        # prompts = batch["prompt"].to('cuda')
+        # inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        input_ids = batch["input_ids"].to('cuda')
+        attention_mask = batch["attention_mask"].to('cuda')
 
         # 生成 response（actor模型）
         with torch.no_grad():
             outputs = self.actor.generate(
                 input_ids=input_ids,
-                max_length=self.args.max_new_token,
+                max_length=self.config.max_new_token,
                 eos_token=self.tokenizer.eos_token,
                 pad_token_id=self.tokenizer.pad_token,
-                temperature=self.args.temperature,
+                temperature=self.config.temperature,
                 attention_mask=attention_mask,
-                top_k=self.args.top_k,
+                top_k=self.config.top_k,
             )
-        prompt_len = input_ids.shape[1]
-        responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
-        response_attention_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
-                                                     eos_token=self.tokenizer.eos_token_id, dtype=attention_mask.dtype)
-        mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
+            prompt_len = input_ids.shape[1]
+            responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
+            response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
+                                                         eos_token=self.tokenizer.eos_token_id,
+                                                         dtype=attention_mask.dtype)
+            mask = torch.cat((attention_mask, response_mask), dim=-1)
 
-        # 计算 actor/reference 的 log_prob
-        # actor_log_probs = self._compute_log_probs(self.actor, outputs, input_ids, mask, responses[:, prompt_len:])
-        ref_log_probs = self._compute_log_probs(self.reference, outputs, input_ids, mask, responses[:, prompt_len:])
+        # 计算 reference 的 log_prob
+        ref_log_probs = self._compute_ref_log_probs(outputs, mask, responses[:, prompt_len:])
 
-        return prompts, responses[:, prompt_len:], outputs, ref_log_probs, response_attention_mask, mask
+        return responses[:, prompt_len:], outputs, ref_log_probs, response_mask, mask
 
     @staticmethod
     def _get_eos_mask(response_id: torch.Tensor, eos_token: int = 2, dtype=torch.int64):
@@ -141,31 +212,27 @@ class MegatronDeepSpeedPPOTrainer:
         eos_mask = torch.logical_not(eos_mask).to(dtype)
         return eos_mask
 
-    def _compute_reward(self, prompts, responses):
+    def _compute_reward(self, batch, responses):
         """计算奖励分数（结合RM分数 + KL 惩罚）"""
-        rm_inputs = self.tokenizer([f"{p}\n{r}" for p, r in zip(prompts, responses)],
-                                   return_tensors="pt", padding=True, truncation=True)
-        rm_inputs = {k: v.to(self.actor.device) for k, v in rm_inputs.items()}
-
-        with torch.no_grad():
-            rm_scores = self.rm_model(**rm_inputs).logits.sequeeze(-1)
-
-        # 2.计算KL惩罚
-        kl = self.actor_log_probs - self.ref_log_probs
-        kl_penalty = self.args.kl_coef * kl
-
-        # 3.总奖励
-        rewards = rm_scores - kl_penalty
+        # rm_inputs = self.tokenizer([f"{p}\n{r}" for p, r in zip(prompts, responses)],
+        #                            return_tensors="pt", padding=True, truncation=True)
+        # rm_inputs = {k: v.to(self.actor.device) for k, v in rm_inputs.items()}
+        #
+        # with torch.no_grad():
+        #     rm_scores = self.rm_model(**rm_inputs).logits.sequeeze(-1)
+        #
+        # # 2.计算KL惩罚
+        # kl = self.actor_log_probs - self.ref_log_probs
+        # kl_penalty = self.config.kl_coef * kl
+        #
+        # # 3.总奖励
+        # rewards = rm_scores - kl_penalty
+        batch["responses"] = responses
+        rewards = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)(batch)
         return rewards
 
-    def _update_policy(self, ref_log_probs, outputs, responses, critic_values, rewards,
-                       # 序列掩码：(timesteps, batch_size)，1=有效，0=无效
-                       response_attention_mask, mask: torch.Tensor = None):
+    def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
         """更新策略网络（PPO 核心逻辑）"""
-        # 计算优势函数 （Advantage = Reward - Critic Value）
-        target_values, advantages = self._compute_gae_with_mask(rewards.permute(1, 0), critic_values.permute(1, 0), mask=response_attention_mask.permute(1, 0))
-        target_values = target_values.permute(1, 0)
-        advantages = advantages.permute(1, 0)
 
         batches = TensorDict(
             source={
@@ -178,16 +245,16 @@ class MegatronDeepSpeedPPOTrainer:
             batch_size=outputs.shape[0])
 
         meta_info = {
-            'clip_ratio': self.args.clip_ratio,
-            'entropy_coeff': self.args.entropy_coeff,
+            'clip_ratio': self.config.clip_ratio,
+            'entropy_coeff': self.config.entropy_coeff,
         }
 
         dataloader = utils.make_iterator(batches, mini_batch_size=self.config.ppo_mini_batch_size,
-                                  epochs=self.config.ppo_epochs,
-                                  dataloader_kwargs={'shuffle': self.config.shuffle})
+                                         epochs=self.config.ppo_epochs,
+                                         dataloader_kwargs={'shuffle': self.config.shuffle})
         metrics = {}
         for data in dataloader:
-
+            self.optimizer.zero_grad()
             # 模型前向传播
             metric_micro_batch = self.actor.forward_backward_batch(
                 batch=data,
@@ -195,6 +262,8 @@ class MegatronDeepSpeedPPOTrainer:
                 post_process_fn=None,
                 meta_info=meta_info
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
+
+            self.optimizer.step()
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)
@@ -207,15 +276,11 @@ class MegatronDeepSpeedPPOTrainer:
 
             # 更新 actor 模型
             # self.actor.backward(policy_loss)
-            self.optimizer.step()
-            self.optimizer.zero_grad()
 
-            critic_loss = torch.nn.functional.mse_loss(critic_values, target_values)
-            critic_loss = self.mask_mean(mask, critic_loss, -1)
+            # critic_loss = torch.nn.functional.mse_loss(critic_values, target_values)
+            # critic_loss = self.mask_mean(mask, critic_loss, -1)
             # 更新 critic 模型
             # self.critic.backward(critic_loss)
-            self.critic_optimizer.step()
-            self.critic_optimizer.zero_grad()
 
         return metrics
 
@@ -224,22 +289,27 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.train()
         self.critic.train()
 
-        for epoch in range(self.args.epochs):
-            for step, batch in enumerate(self.dataset):
+        for epoch in range(self.config.epochs):
+            for batch_dict in self.train_dataloader:
                 # 1. Rollout：生成相应并计算 log prob
-                prompts, responses, outputs, ref_log_probs, response_attention_mask, mask = self._rollout(batch)
+                responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
 
                 # 2. 计算奖励
-                rewards = self._compute_reward(prompts, responses)
+                rewards = self._compute_reward(batch_dict, responses)
 
                 # 3. Critic 预测价值
-                critic_inputs = self.tokenizer([f"{p}\n{r}" for p, r in zip(prompts, responses)], return_tensors="pt",
-                                               padding=True)
-                critic_inputs = {k: v.to(self.actor.device) for k, v in critic_inputs.items()}
-                critic_values = self.critic(**critic_inputs)
+                critic_values = self.compute_values(dialogue_ids, responses, attention_mask)
 
-                # 4. 更新策略和价值网络
-                self._update_policy(ref_log_probs, critic_values, rewards, response_attention_mask, mask)
+                # 4. 计算优势函数
+                advantages, returns = core_algos.compute_gae_advantage_return(rewards,
+                                                                              critic_values,
+                                                                              eos_mask=response_mask)
+
+                # 5. 更新价值网络
+                self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
+
+                # 6. 更新策略
+                self._update_policy(ref_log_probs, responses, advantages, attention_mask)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
@@ -252,129 +322,81 @@ class MegatronDeepSpeedPPOTrainer:
         loss = loss.mean()
         return loss
 
-    @staticmethod
-    def _compute_gae_with_mask(
-            rewards: torch.Tensor,  # 奖励：(timesteps, batch_size)
-            values: torch.Tensor,  # 状态价值：(timesteps, batch_size)
-            gamma: float = 0.99,
-            gae_lambda: float = 0.95,
-            mask: torch.Tensor = None  # 序列掩码：(timesteps, batch_size)，1=有效，0=无效
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        支持序列掩码的 GAE 计算（内部自动推导 dones，适配多轨迹不等长序列）
-        Returns:
-            target_values: 目标价值
-            advantages: 标准化后的优势函数
-            dones: 内部生成的终止标记（方便外部验证或后续使用）
-        """
-        # 1. 校验输入维度
-        if rewards.ndim != 2 or values.ndim != 2:
-            raise ValueError(
-                f"rewards/values 需为 2 维张量（timesteps, batch_size），当前维度：rewards={rewards.ndim}, values={values.ndim}")
-        timesteps, batch_size = rewards.shape
-
-        # 2. 处理掩码：默认所有步骤有效（兼容单轨迹/同步终止场景）
-        if mask is None:
-            mask = torch.ones_like(rewards, dtype=torch.float32, device=rewards.device)
-        else:
-            mask = mask.float()  # 转为 float 方便后续乘法运算
-
-        # -------------------------- 核心：通过 mask 推导 dones --------------------------
-        dones = torch.zeros_like(rewards, dtype=torch.bool, device=rewards.device)  # 初始化终止标记
-        for t in range(timesteps):
-            # 条件1：当前步骤是有效步（mask[t] = 1）
-            is_valid = mask[t] == 1.0
-            if not is_valid.any():
-                continue  # 无有效步骤，跳过
-
-            # 条件2：当前是最后一个时间步，或下一个步骤是无效步
-            if t == timesteps - 1:
-                # 最后一个时间步的有效步 → 终止步
-                dones[t] = is_valid
+    def compute_values(self, outputs, responses, attention_mask):
+        response_length = responses.size(1)
+        batches = TensorDict(
+            source={
+                "input_ids": outputs,
+                "attention_mask": attention_mask,
+                "responses": responses,
+            },
+            batch_size=responses.shape[0])
+        with torch.no_grad():
+            output = self.critic.forward_backward_batch(batch=batches, forward_only=True)
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
+                # only on last rank. It should be on every tp rank
+                values = torch.cat([o for o in output], dim=0)  # (bs, seq_size, 1)
+                values = values.to(torch.float32)
             else:
-                # 下一个步骤是无效步（mask[t+1] = 0）的有效步 → 终止步
-                next_is_invalid = mask[t + 1] == 0.0
-                dones[t] = is_valid & next_is_invalid
+                values = torch.empty_like(attention_mask, dtype=torch.float32)
 
-        # 3. GAE 核心计算（基于推导的 dones）
-        advantages = torch.zeros_like(rewards, dtype=torch.float32, device=rewards.device)
-        running_advantage = torch.zeros(batch_size, dtype=torch.float32, device=rewards.device)  # 每个轨迹独立累积
-        dones_float = dones.float()
-        next_value = torch.zeros((1, batch_size), dtype=torch.float32, device=rewards.device)
+            # each tp ranks should contain the same value
+            values = values * attention_mask
+            values = values[:, -response_length - 1:-1]
+            values = values.contiguous()
 
-        # 反向遍历时间步
-        for t in reversed(range(timesteps)):
-            # 仅对有效步骤更新累积优势
-            if mask[t].sum() > 0:
-                # 下一个状态的价值（终止步下为 0）
-                next_v = next_value * (1 - dones_float[t])  # (batch_size,)
+            # sync among pp ranks
+            torch.distributed.broadcast(tensor=values,
+                                        src=parallel_state.get_pipeline_model_parallel_last_rank(),
+                                        group=parallel_state.get_pipeline_model_parallel_group())
 
-                # 计算 TD 残差
-                td_error = rewards[t] + gamma * next_v - values[t]  # (batch_size,)
+        # add empty cache after each compute
+        torch.cuda.empty_cache()
 
-                # 累积 GAE 优势（仅有效步骤参与更新）
-                running_advantage = td_error + gamma * gae_lambda * (1 - dones_float[t]) * running_advantage
-                advantages[t] = running_advantage * mask[t]  # 屏蔽无效步骤
+        return values
 
-            # 更新下一个状态的价值（用于 t-1 步计算）
-            next_v_current = values[t] * mask[t]
-            next_value = torch.where(mask[t].sum() > 0, next_v_current, next_value)
-
-        # 4. 计算目标价值（仅有效步骤有意义）
-        target_values = advantages + values * mask  # 无效步骤设为 0
-
-        # 5. 优势函数标准化（仅基于有效步骤，避免无效 0 干扰）
-        valid_advantages = advantages[mask == 1.0]
-        if valid_advantages.numel() > 0:
-            advantages = (advantages - valid_advantages.mean()) / (valid_advantages.std() + 1e-8)
-        else:
-            raise ValueError("所有轨迹步骤均为无效，无法计算 GAE")
-
-        return target_values, advantages
-
-    @staticmethod
-    def _compute_log_probs(model, outputs, input_ids, mask, responses):
+    def _compute_ref_log_probs(self, input_ids, mask, responses):
         """计算生成序列的 log probability（适配 Megatron 并行）"""
-        prompt_len = input_ids.shape[1]
 
         def compute_logprobs_fn(output, data):
             _response = data["responses"]
             _response_length = _response.size(1)
             # 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
-            _logits = model.gather_logits_across_tp(output)
+            _logits = self.reference.gather_logits_across_tp(output)
             _logits = _logits[:, -_response_length - 1:-1]
-            _log_probs = core_algos.vocab_parallel_log_probs_from_logits(_logits, _response)
+            _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)
             return _log_probs
 
         batches = TensorDict(
             source={
-                "input_ids": outputs,
+                "input_ids": input_ids,
                 "attention_mask": mask,
                 "responses": responses,
             },
-            batch_size=outputs.shape[0])
+            batch_size=input_ids.shape[0])
 
         # 模型前向传播
-        log_probs = model.forward_backward_batch(
-            batch=batches,
-            forward_only=True,
-            post_process_fn=compute_logprobs_fn
-        )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
+        with torch.no_grad():
+            log_probs = self.reference.forward_backward_batch(
+                batch=batches,
+                forward_only=True,
+                post_process_fn=compute_logprobs_fn
+            )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
-        if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
-            # only on last rank. It should be on every tp rank
-            log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
-            log_probs = log_probs.to(torch.float32)
-        else:
-            log_probs = torch.empty(size=(outputs.shape[0], outputs.shape[1]),
-                                    dtype=torch.float32,
-                                    device=input_ids.device)
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
+                # only on last rank. It should be on every tp rank
+                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
+                log_probs = log_probs.to(torch.float32)
+            else:
+                log_probs = torch.empty(size=(input_ids.shape[0], input_ids.shape[1]),
+                                        dtype=torch.float32,
+                                        device=input_ids.device)
 
-        # broadcast across pp ranks
-        torch.distributed.broadcast(tensor=log_probs,
-                                    src=parallel_state.get_pipeline_model_parallel_last_rank(),
-                                    group=parallel_state.get_pipeline_model_parallel_group(),
-                                    async_op=False)
+            # broadcast across pp ranks
+            torch.distributed.broadcast(tensor=log_probs,
+                                        src=parallel_state.get_pipeline_model_parallel_last_rank(),
+                                        group=parallel_state.get_pipeline_model_parallel_group(),
+                                        async_op=False)
 
         # log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
         # # 提取生成部分（prompt 之后）的 log prob
@@ -384,3 +406,32 @@ class MegatronDeepSpeedPPOTrainer:
 
         return log_probs
 
+    def _update_critic(self, input_ids, attention_mask, responses, values, returns):
+        batches = TensorDict(
+            source={
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "responses": responses,
+                "values": values,
+                "returns": returns,
+            },
+            batch_size=input_ids.shape[0])
+        batches.to('cuda')
+
+        meta_info = {
+            'cliprange_value': self.config.cliprange_value,
+        }
+
+        dataloader = utils.make_iterator(batches, mini_batch_size=self.config.ppo_mini_batch_size,
+                                         epochs=self.config.ppo_epochs,
+                                         dataloader_kwargs={'shuffle': self.config.shuffle})
+        metrics = {}
+        for data in dataloader:
+            self.critic_optimizer.zero_grad()
+            metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
+
+            for metric in metric_micro_batch:
+                utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
+
+            self.critic_optimizer.step()
+        return metrics

@@ -1,0 +1,175 @@
+from typing import Dict
+from tensordict import TensorDict
+from torch.utils.data import DataLoader, Dataset
+import torch
+
+
+def masked_mean(values, mask, axis=None):
+    """Compute mean of tensor with a masked values."""
+    return (values * mask).sum(axis=axis) / mask.sum(axis=axis)
+
+
+def append_to_dict(data: Dict, new_data: Dict):
+    for key, val in new_data.items():
+        if key not in data:
+            data[key] = []
+        data[key].append(val)
+
+
+class TensorDictDataset(Dataset):
+    def __init__(self, tensor_dict: TensorDict):
+        super().__init__()
+        self.tensor_dict = tensor_dict
+        # 自动获取 batch_size（优先用 TensorDict 的 batch_size 属性，没有则取第一个 key 的第 0 维）
+        if hasattr(tensor_dict, "batch_size"):
+            self.batch_size = tensor_dict.batch_size
+        else:
+            # 确保所有 key 的张量第 0 维（batch 维）一致
+            first_key = next(tensor_dict[0].keys().__iter__())
+            self.batch_size = tensor_dict[first_key].shape[0]
+            # 校验所有 key 的 batch 维一致（避免报错）
+            for key, tensor in tensor_dict.items():
+                assert tensor.shape[
+                           0] == self.batch_size, f"Key {key} 的 batch 维大小（{tensor.shape[0]}）与预期（{self.batch_size}）不一致"
+
+    def __len__(self) -> int:
+        """返回样本总数"""
+        return self.batch_size
+
+    def __getitem__(self, idx: int) -> TensorDict:
+        """按索引提取单个样本（保留 TensorDict 结构）"""
+        return self.tensor_dict[idx]  # 关键：TensorDict 支持索引切片，自动拆分单个样本
+
+
+def clip_by_value(x, tensor_min, tensor_max):
+    """
+    Tensor extenstion to torch.clamp
+    https://github.com/pytorch/pytorch/issues/2793#issuecomment-428784713
+    """
+    clipped = torch.max(torch.min(x, tensor_max), tensor_min)
+    return clipped
+
+
+def collate_tensordict(batch: list[TensorDict]) -> TensorDict:
+    """
+    基础版collate_fn：拼接batch维，支持嵌套TensorDict
+    Args:
+        batch: 单个样本TensorDict的列表
+    Returns:
+        batch级TensorDict（所有张量第0维为batch size）
+    """
+    if not batch:
+        raise ValueError("Batch is empty")
+
+    # 取第一个样本作为模板，获取所有键（假设所有样本结构一致）
+    sample = batch[0]
+    if not isinstance(sample, TensorDict):
+        raise TypeError("Each sample must be a TensorDict")
+
+    # 递归处理每个键：如果是TensorDict则递归，否则拼接张量
+    def _collate(value_list: list):
+        # 检查第一个元素类型：嵌套TensorDict则递归
+        if isinstance(value_list[0], TensorDict):
+            return collate_tensordict(value_list)
+        # 否则拼接张量（确保所有元素都是张量）
+        elif isinstance(value_list[0], torch.Tensor):
+            # 统一设备（可选，按第一个张量的设备）
+            device = value_list[0].device
+            value_list = [v.to(device) for v in value_list]
+            # 拼接batch维（dim=0）
+            return torch.stack(value_list).contiguous()
+        # 处理非张量类型（如标量、列表，可选）
+        else:
+            return torch.tensor(value_list)  # 转换为张量后拼接
+
+    # 遍历所有键，对每个键的所有样本值执行_collate
+    batch_data = {
+        key: _collate([sample[key] for sample in batch])
+        for key in sample.keys()
+    }
+
+    # 构造batch级TensorDict（保留原样本的device和其他属性）
+    return TensorDict(
+        batch_data,
+        batch_size=len(batch),  # 显式指定batch size
+        device=sample.device
+    )
+
+
+def make_iterator(data: TensorDict, mini_batch_size, epochs, seed=None, dataloader_kwargs=None):
+    """Make an iterator from the DataProto. This is built upon that TensorDict can be used as a normal Pytorch
+    dataset. See https://pytorch.org/tensordict/tutorials/data_fashion for more details.
+
+    Args:
+        mini_batch_size (int): mini-batch size when iterating the dataset. We require that
+            ``batch.batch_size[0] % mini_batch_size == 0``
+        epochs (int): number of epochs when iterating the dataset.
+        dataloader_kwargs: internally, it returns a DataLoader over the batch.
+            The dataloader_kwargs is the kwargs passed to the DataLoader
+
+    Returns:
+        Iterator: an iterator that yields a mini-batch data at a time. The total number of iteration steps is
+        ``self.batch.batch_size * epochs // mini_batch_size``
+        :param dataloader_kwargs:
+        :param seed:
+        :param epochs:
+        :param mini_batch_size:
+        :param data:
+    """
+    assert data.batch_size[0] % mini_batch_size == 0, f"{data.batch_size[0]} % {mini_batch_size} != 0"
+    # we can directly create a dataloader from TensorDict
+    if dataloader_kwargs is None:
+        dataloader_kwargs = {}
+
+    if seed is not None:
+        generator = torch.Generator()
+        generator.manual_seed(seed)
+    else:
+        generator = None
+
+    assert isinstance(dataloader_kwargs, Dict)
+    dataset = TensorDictDataset(data)
+    train_dataloader = DataLoader(dataset=dataset,
+                                  batch_size=mini_batch_size,
+                                  collate_fn=collate_tensordict,
+                                  generator=generator,
+                                  **dataloader_kwargs)
+
+    def get_data():
+        for _ in range(epochs):
+            for d in train_dataloader:
+                yield d
+
+    return iter(get_data())
+
+
+def masked_whiten(values, mask, shift_mean=True):
+    """Whiten values with masked values."""
+    mean, var = masked_mean(values, mask), masked_var(values, mask)
+    whitened = (values - mean) * torch.rsqrt(var + 1e-8)
+    if not shift_mean:
+        whitened += mean
+    return whitened
+
+
+def masked_var(values, mask, unbiased=True):
+    """Compute variance of tensor with masked values."""
+    mean = masked_mean(values, mask)
+    centered_values = values - mean
+    variance = masked_mean(centered_values ** 2, mask)
+    if unbiased:
+        mask_sum = mask.sum()
+        if mask_sum == 0:
+            raise ValueError("At least one element in the mask has to be 1.")
+        # note that if mask_sum == 1, then there is a division by zero issue
+        # to avoid it you just need to use a larger minibatch_size
+        if mask_sum == 1:
+            raise ValueError("The sum of the mask is one, which can cause a division by zero.")
+        bessel_correction = mask_sum / (mask_sum - 1)
+        variance = variance * bessel_correction
+    return variance
+
+
+def compute_position_id_with_mask(mask):
+    return torch.clip(torch.cumsum(mask, dim=-1) - 1, min=0, max=None)
+
