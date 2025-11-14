@@ -1,15 +1,9 @@
 import deepspeed
 import torch
-from torch.utils.data import DataLoader
-from datasets import load_dataset
 from megatron.core import parallel_state
-from megatron.core import tensor_parallel
-from megatron.core.pipeline_parallel import get_forward_backward_func
 from transformers import AutoTokenizer
 from peft import LoraConfig
-from megatron.core.optimizer import DistributedOptimizer
 
-import tensordict
 from tensordict import TensorDict
 from tensor_parallel import vocab_parallel_log_probs_from_logits
 
@@ -18,6 +12,15 @@ from utils import utils
 from modeling_qwen_megatron import build_qwen2_megatron_model
 from omegaconf import OmegaConf, open_dict
 import reward_score
+from deepspeed.accelerator import get_accelerator
+
+if get_accelerator().device_name() == 'cuda':
+    from apex.optimizers import FusedAdam as Adam
+else:
+    from torch.optim import Adam
+
+from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
+from megatron.core.num_microbatches_calculator import get_num_microbatches
 
 
 class MegatronDeepSpeedPPOTrainer:
@@ -63,13 +66,15 @@ class MegatronDeepSpeedPPOTrainer:
 
     def _init_deepspeed(self):
         """初始化deepspeed引擎（仅优化 LoRa 参数）"""
+        utils.print_rank_0("DeepSpeed is enabled.")
         # 优化配置
-        optimizer = torch.optim.AdamW(
+        optimizer = Adam(
             self.actor.parameters(),
             lr=self.config.learning_rate,
             betas=(0.9, 0.95),
             weight_decay=0.01
         )
+        opt_param_scheduler = get_optimizer_param_scheduler(optimizer, config=self.config.actor.optimizer)
 
         # DeepSpeed 配置（从 JSON 加载）
         ds_config = deepspeed.DeepSpeedConfig(self.config.ds_config_file)
@@ -79,19 +84,26 @@ class MegatronDeepSpeedPPOTrainer:
             model=self.actor,
             optimizer=optimizer,
             config=ds_config,
-            model_parameters=self.actor.parameters()
+            mpu=parallel_state,
+            lr_scheduler=opt_param_scheduler,
+            # model_parameters=self.actor.parameters()
         )
 
         # 优化配置
-        critic_optimizer = torch.optim.AdamW(
+        critic_optimizer = Adam(
             self.critic.parameters(),
             lr=self.config.learning_rate,
         )
+
+        critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
+                                                                   config=self.config.critic.optimizer)
+
         self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
             model=self.critic,
             optimizer=critic_optimizer,
             config=ds_config,
-            model_parameters=self.critic.parameters()
+            lr_scheduler=critic_opt_param_scheduler,
+            # model_parameters=self.critic.parameters()
         )
 
     # def _load_dataset(self):
@@ -115,12 +127,12 @@ class MegatronDeepSpeedPPOTrainer:
                                          truncation='error')
         if self.config.data.train_data_num is not None:
             if self.config.data.train_data_num > len(self.train_dataset.dataframe):
-                print(
+                utils.print_rank_0(
                     f"[WARNING] training dataset size is smaller than desired size. Using the dataset as the original size {len(self.train_dataset.dataframe)}")
             else:
                 self.train_dataset.dataframe = self.train_dataset.dataframe.sample(self.config.data.train_data_num,
                                                                                    random_state=42)
-        print(f"filtered training dataset size: {len(self.train_dataset.dataframe)}")
+        utils.print_rank_0(f"filtered training dataset size: {len(self.train_dataset.dataframe)}")
 
         self.train_dataloader = DataLoader(dataset=self.train_dataset,
                                            batch_size=self.config.data.train_batch_size,
@@ -137,12 +149,12 @@ class MegatronDeepSpeedPPOTrainer:
                                        truncation='error')
         if self.config.data.val_data_num is not None:
             if self.config.data.val_data_num > len(self.val_dataset.dataframe):
-                print(
+                utils.print_rank_0(
                     f"[WARNING] validation dataset size is smaller than desired size. Using the dataset as the original size {len(self.val_dataset.dataframe)}")
             else:
                 self.val_dataset.dataframe = self.val_dataset.dataframe.sample(self.config.data.val_data_num,
                                                                                random_state=42)
-        print(f"filtered validation dataset size: {len(self.val_dataset.dataframe)}")
+        utils.print_rank_0(f"filtered validation dataset size: {len(self.val_dataset.dataframe)}")
 
         self.val_dataloader = DataLoader(dataset=self.val_dataset,
                                          batch_size=self.config.data.val_batch_size,
@@ -150,8 +162,8 @@ class MegatronDeepSpeedPPOTrainer:
                                          drop_last=True,
                                          collate_fn=collate_fn)
 
-        print(f'Size of train dataloader: {len(self.train_dataloader)}')
-        print(f'Size of val dataloader: {len(self.val_dataloader)}')
+        utils.print_rank_0(f'Size of train dataloader: {len(self.train_dataloader)}')
+        utils.print_rank_0(f'Size of val dataloader: {len(self.val_dataloader)}')
 
         assert len(self.train_dataloader) >= 1
         assert len(self.val_dataloader) >= 1
@@ -163,7 +175,7 @@ class MegatronDeepSpeedPPOTrainer:
             total_training_steps = self.config.trainer.total_training_steps
 
         self.total_training_steps = total_training_steps
-        print(f'Total training steps: {self.total_training_steps}')
+        utils.print_rank_0(f'Total training steps: {self.total_training_steps}')
 
         OmegaConf.set_struct(self.config, True)
         with open_dict(self.config):
@@ -191,8 +203,8 @@ class MegatronDeepSpeedPPOTrainer:
             prompt_len = input_ids.shape[1]
             responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
             response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
-                                                         eos_token=self.tokenizer.eos_token_id,
-                                                         dtype=attention_mask.dtype)
+                                               eos_token=self.tokenizer.eos_token_id,
+                                               dtype=attention_mask.dtype)
             mask = torch.cat((attention_mask, response_mask), dim=-1)
 
         # 计算 reference 的 log_prob
@@ -263,7 +275,14 @@ class MegatronDeepSpeedPPOTrainer:
                 meta_info=meta_info
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
-            self.optimizer.step()
+            increment = get_num_microbatches() * self.config.megtron.micro_batch_size * self.config.megtron.data_parallel_size
+
+            self.actor.step(lr_kwargs={'increment': increment})
+
+            update_successful = self.actor.was_step_applied()
+            utils.print_rank_0(f"update_successful:{update_successful}, increment:{increment}")
+
+            # self.optimizer.step()
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)
@@ -435,3 +454,36 @@ class MegatronDeepSpeedPPOTrainer:
 
             self.critic_optimizer.step()
         return metrics
+
+
+def get_optimizer_param_scheduler(optimizer, config):
+    """Build the learning rate scheduler."""
+    # Iteration-based training.
+    if config.train_iters:
+        if config.lr_decay_iters is None:
+            config.lr_decay_iters = config.train_iters
+        lr_decay_steps = config.lr_decay_iters * config.global_batch_size
+        wd_incr_steps = config.train_iters * config.global_batch_size
+        if config.lr_warmup_fraction is not None:
+            lr_warmup_steps = config.lr_warmup_fraction * lr_decay_steps
+        else:
+            lr_warmup_steps = config.lr_warmup_iters * config.global_batch_size
+    else:
+        raise Exception(
+            'either train-iters or train-samples should be provided.')
+
+    opt_param_scheduler = OptimizerParamScheduler(
+        optimizer,
+        max_lr=config.lr,
+        min_lr=config.min_lr,
+        lr_warmup_steps=lr_warmup_steps,
+        lr_decay_steps=lr_decay_steps,
+        lr_decay_style=config.lr_decay_style,
+        start_wd=config.start_weight_decay,
+        end_wd=config.end_weight_decay,
+        wd_incr_steps=wd_incr_steps,
+        wd_incr_style=config.weight_decay_incr_style,
+        use_checkpoint_opt_param_scheduler=config.use_checkpoint_opt_param_scheduler,
+        override_opt_param_scheduler=config.override_opt_param_scheduler)
+
+    return opt_param_scheduler

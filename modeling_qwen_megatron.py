@@ -127,6 +127,7 @@ class Qwen2MegatronModel(nn.Module):
         self.hidden_size = qwen_config.hidden_size
         self.num_layers = qwen_config.num_layers
         self.tp_size = megatron_config.tensor_model_parallel_size
+        #TODO fix
         self.micro_batch_size = get_num_microbatches()
         self.pp_size = parallel_state.get_pipeline_model_parallel_world_size()  # 获取 PP 总进程数
         self.pp_rank = parallel_state.get_pipeline_model_parallel_rank()  # 当前 PP stage 编号（0~pp_size-1）

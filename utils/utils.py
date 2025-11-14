@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict
 from tensordict import TensorDict
 from torch.utils.data import DataLoader, Dataset
@@ -173,3 +174,18 @@ def masked_var(values, mask, unbiased=True):
 def compute_position_id_with_mask(mask):
     return torch.clip(torch.cumsum(mask, dim=-1) - 1, min=0, max=None)
 
+
+def print_datetime(string):
+    """Note that this call will sync across all ranks."""
+    torch.distributed.barrier()
+    time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print_rank_0('[' + string + '] datetime: {} '.format(time_str))
+
+
+def print_rank_0(message):
+    """If distributed is initialized, print only on rank 0."""
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
