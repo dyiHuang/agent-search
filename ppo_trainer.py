@@ -32,6 +32,10 @@ from megatron.core.models.gpt import GPTModel
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
         self.config = config
+        self._init_logger()
+        # 加载数据集（分布式采样）
+        self._create_dataloader()
+
         self.tokenizer = AutoTokenizer.from_pretrained(config.qwen_model_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -59,8 +63,12 @@ class MegatronDeepSpeedPPOTrainer:
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
 
-        # 5. 加载数据集（分布式采样）
-        self._create_dataloader()
+    def _init_logger(self):
+        from utils.tracking import Tracking
+        self.logger = Tracking(project_name=self.config.trainer.project_name,
+                          experiment_name=self.config.trainer.experiment_name,
+                          default_backend=self.config.trainer.logger,
+                          config=OmegaConf.to_container(self.config, resolve=True))
 
     def _init_distributed(self):
         """初始化 Megatron + Deepspeed 分布式环境"""
@@ -300,6 +308,7 @@ class MegatronDeepSpeedPPOTrainer:
                     tokenizer=self.tokenizer,
                     actor_model=self.actor,
                     config=gen_config,
+                    g_config=self.config
                 )
                 first_input_ids = batch['input_ids'][:, -gen_config.max_start_length:].clone().long()
                 final_gen_batch_output = generation_manager.run_llm_loop(
@@ -308,9 +317,9 @@ class MegatronDeepSpeedPPOTrainer:
                 )
 
                 # final_gen_batch_output.batch.apply(lambda x: x.long(), inplace=True)
-                for key in final_gen_batch_output.keys():
-                    if isinstance(final_gen_batch_output[key], torch.Tensor):
-                        final_gen_batch_output[key] = final_gen_batch_output[key].long()
+                for key in final_gen_batch_output[0].keys():
+                    if isinstance(final_gen_batch_output[0][key], torch.Tensor):
+                        final_gen_batch_output[0][key] = final_gen_batch_output[0][key].long()
 
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
@@ -350,7 +359,8 @@ class MegatronDeepSpeedPPOTrainer:
         # # 3.总奖励
         # rewards = rm_scores - kl_penalty
         batch["responses"] = responses
-        rewards = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)(batch)
+        rm = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)
+        rewards = rm(batch)
         return rewards
 
     def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
@@ -371,6 +381,8 @@ class MegatronDeepSpeedPPOTrainer:
             'entropy_coeff': self.config.actor.entropy_coeff,
         }
 
+        batches.to('cuda')
+
         dataloader = utils.make_iterator(batches, mini_batch_size=self.config.actor.ppo_mini_batch_size,
                                          epochs=self.config.actor.ppo_epochs,
                                          dataloader_kwargs={'shuffle': self.config.actor.shuffle})
@@ -390,7 +402,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.actor.step(lr_kwargs={'increment': increment})
 
             update_successful = self.actor.was_step_applied()
-            utils.print_rank_0(f"update_successful:{update_successful}, increment:{increment}")
+            utils.print_rank_0(f"actor update_successful:{update_successful}, increment:{increment}")
 
             # self.optimizer.step()
 
@@ -417,7 +429,9 @@ class MegatronDeepSpeedPPOTrainer:
         """PPO 训练主循环"""
         self.actor.train()
         self.critic.train()
+        self.global_steps = 0
 
+        metrics = {}
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 # 1. Rollout：生成相应并计算 log prob
@@ -435,10 +449,20 @@ class MegatronDeepSpeedPPOTrainer:
                                                                               eos_mask=response_mask)
 
                 # 5. 更新价值网络
-                self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
+                metrics_critic = self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
+                metrics.update(metrics_critic)
 
                 # 6. 更新策略
-                self._update_policy(ref_log_probs, responses, advantages, attention_mask)
+                metrics_actor = self._update_policy(ref_log_probs, responses, advantages, attention_mask)
+                metrics.update(metrics_actor)
+
+                self.logger.log(data=metrics, step=self.global_steps)
+
+                self.global_steps += 1
+
+                if self.global_steps >= self.total_training_steps:
+                    # pprint(f'Final validation metrics: {val_metrics}')
+                    return
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
@@ -460,6 +484,7 @@ class MegatronDeepSpeedPPOTrainer:
                 "responses": responses,
             },
             batch_size=responses.shape[0])
+        batches.to('cuda')
         with torch.no_grad():
             output = self.critic.forward_backward_batch(batch=batches, forward_only=True)
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -479,6 +504,7 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
+        values.to('cuda')
         # add empty cache after each compute
         torch.cuda.empty_cache()
 
@@ -503,6 +529,8 @@ class MegatronDeepSpeedPPOTrainer:
                 "responses": responses,
             },
             batch_size=input_ids.shape[0])
+
+        batches = batches.to('cuda')
 
         # 模型前向传播
         with torch.no_grad():
@@ -533,6 +561,10 @@ class MegatronDeepSpeedPPOTrainer:
         # gen_token_ids = outputs[:, prompt_len:]
         # gen_log_probs = gen_log_probs.gather(2, gen_token_ids.unsqueeze(-1)).squeeze(-1)
 
+        log_probs.to('cpu')
+        # add empty cache after each compute
+        torch.cuda.empty_cache()
+
         return log_probs
 
     def _update_critic(self, input_ids, attention_mask, responses, values, returns):
@@ -556,8 +588,15 @@ class MegatronDeepSpeedPPOTrainer:
                                          dataloader_kwargs={'shuffle': self.config.critic.shuffle})
         metrics = {}
         for data in dataloader:
-            self.critic_optimizer.zero_grad()
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
+
+            increment = (get_num_microbatches() *
+                         self.config.megtron.micro_batch_size * self.config.megtron.data_parallel_size)
+
+            self.critic.step(lr_kwargs={'increment': increment})
+
+            update_successful = self.critic.was_step_applied()
+            utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.

@@ -514,13 +514,14 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
     def __init__(
             self,
+            config,
             qwen_config: Qwen2Config,
             megatron_config: TransformerConfig,
             freeze_actor_backbone: bool = True,  # 是否冻结Actor底层参数
             use_bias: bool = True  # 价值头是否使用偏置
     ):
         # 调用父类初始化（复用嵌入层、Transformer层、LayerNorm等）
-        super().__init__(qwen_config=qwen_config, megatron_config=megatron_config)
+        super().__init__(config=config, qwen_config=qwen_config, megatron_config=megatron_config)
         self.freeze_actor_backbone = freeze_actor_backbone
 
         # 2. 价值输出头（兼容TP并行）
@@ -697,7 +698,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         return losses_reduced
 
 
-def build_qwen2_megatron_model(qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \
+def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \
         -> Union[Qwen2MegatronModel, Qwen2MegatronCritic]:
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
@@ -723,11 +724,13 @@ def build_qwen2_megatron_model(qwen_model_path: str, lora_config: LoraConfig = N
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
     hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, torch_dtype=torch.float16)
     if not is_critic:
-        model = Qwen2MegatronModel(qwen_config, megatron_config)
+        model = Qwen2MegatronModel(config, qwen_config, megatron_config)
+        model.cuda()
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), model, qwen_config,
                                                    megatron_config.params_dtype)
     else:
-        model = Qwen2MegatronCritic(qwen_config, megatron_config)
+        model = Qwen2MegatronCritic(config, qwen_config, megatron_config)
+        model.cuda()
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), model, qwen_config,
                                                    megatron_config.params_dtype, is_value_model=is_critic)
 

@@ -129,7 +129,7 @@ trainer:
   total_epochs: 3
   total_training_steps: null
   project_name: verl_examples
-  experiment_name: gsm8k
+  experiment_name: nq_search_r1
   logger: ['console', 'wandb']
   nnodes: 2
   n_gpus_per_node: 4

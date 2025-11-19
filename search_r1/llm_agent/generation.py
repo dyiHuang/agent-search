@@ -181,14 +181,15 @@ class LLMGenerationManager:
         prompt_len = active_batch["input_ids"].shape[1]
         if num_gpus <= 1:
             output = self.actor.generate(
-                input_ids=active_batch["input_ids"],
+                input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
                 eos_token=self.tokenizer.eos_token,
                 pad_token_id=self.tokenizer.pad_token,
                 temperature=self.g_config.rollout.temperature,
-                attention_mask=active_batch["attention_mask"],
+                attention_mask=active_batch["attention_mask"].to('cuda'),
                 top_k=self.g_config.rollout.top_k,
             )
+            output = output.to('cpu')
             return {
                 "input_ids": output,
                 "responses": output[:, prompt_len:],
@@ -203,14 +204,15 @@ class LLMGenerationManager:
                 active_batch[key] = active_batch[key].long()
         if remainder == 0:
             output = self.actor.generate(
-                input_ids=active_batch["input_ids"],
+                input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
                 eos_token=self.tokenizer.eos_token,
                 pad_token_id=self.tokenizer.pad_token,
                 temperature=self.g_config.rollout.temperature,
-                attention_mask=active_batch["attention_mask"],
+                attention_mask=active_batch["attention_mask"].to('cuda'),
                 top_k=self.g_config.rollout.top_k,
             )
+            output = output.to('cpu')
             return {
                 "input_ids": output,
                 "responses": output[:, prompt_len:],
@@ -232,14 +234,15 @@ class LLMGenerationManager:
 
         # Generate with padded batch
         padded_output = self.actor.generate(
-            input_ids=padded_active_batch["input_ids"],
+            input_ids=padded_active_batch["input_ids"].to('cuda'),
             max_length=self.g_config.rollout.max_new_token,
             eos_token=self.tokenizer.eos_token,
             pad_token_id=self.tokenizer.pad_token,
             temperature=self.g_config.rollout.temperature,
-            attention_mask=padded_active_batch["attention_mask"],
+            attention_mask=padded_active_batch["attention_mask"].to('cuda'),
             top_k=self.g_config.rollout.top_k,
         )
+        padded_output = padded_output.to('cpu')
 
         # Remove padding from output
         trimmed_batch = padded_output[:-padding_size]
