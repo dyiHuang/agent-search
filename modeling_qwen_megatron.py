@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core import parallel_state, tensor_parallel, pipeline_parallel
-from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.transformer_layer import TransformerConfig, TransformerLayer, TransformerLayerSubmodules
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.dot_product_attention import DotProductAttention
@@ -14,6 +14,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
+from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
 from peft import LoraConfig, get_peft_model
 from transformers import Qwen2Config
 from transformers.integrations import use_kernel_forward_from_hub
@@ -25,7 +26,6 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel
 
 import core_algos
 import qwen_load
-import tensordict
 from tensordict import TensorDict
 
 
@@ -118,17 +118,17 @@ class Qwen2PreTrainedModel(PreTrainedModel):
     # }
 
 
-class Qwen2MegatronModel(nn.Module):
+class Qwen2MegatronModel(MegatronModule):
     """Megatron 并行化的 Qwen2.5-3B 模型"""
 
-    def __init__(self, qwen_config: Qwen2Config, megatron_config: TransformerConfig):
-        super().__init__()
+    def __init__(self, config, qwen_config: Qwen2Config, megatron_config: TransformerConfig):
+        super().__init__(megatron_config)
+        self.ddp_config = DistributedDataParallelConfig(use_megatron_fsdp=False)
         self.vocab_size = qwen_config.vocab_size
         self.hidden_size = qwen_config.hidden_size
         self.num_layers = qwen_config.num_layers
         self.tp_size = megatron_config.tensor_model_parallel_size
-        #TODO fix
-        self.micro_batch_size = get_num_microbatches()
+        self.micro_batch_size = config.megatron.micro_batch_size
         self.pp_size = parallel_state.get_pipeline_model_parallel_world_size()  # 获取 PP 总进程数
         self.pp_rank = parallel_state.get_pipeline_model_parallel_rank()  # 当前 PP stage 编号（0~pp_size-1）
 
@@ -147,7 +147,7 @@ class Qwen2MegatronModel(nn.Module):
         self.embedding = None
         if self.pp_rank == 0:
             self.embedding = tensor_parallel.VocabParallelEmbedding(
-                self.vocab_size, self.hidden_size, init_method=self.config.init_method, config=megatron_config
+                self.vocab_size, self.hidden_size, init_method=torch.nn.init.xavier_uniform_, config=megatron_config
             )
 
         # Rotary Embedding：仅 PP stage 0 计算（后续 stage 复用或传递）
@@ -714,6 +714,10 @@ def build_qwen2_megatron_model(qwen_model_path: str, lora_config: LoraConfig = N
         init_method=torch.nn.init.xavier_uniform_,
         tensor_model_parallel_size=parallel_state.get_tensor_model_parallel_world_size(),
         pipeline_model_parallel_size=parallel_state.get_pipeline_model_parallel_world_size(),
+        params_dtype=torch.get_default_dtype(),
+        pipeline_dtype=torch.get_default_dtype(),
+        bf16=torch.get_default_dtype() == torch.bfloat16,
+        fp16=torch.get_default_dtype() == torch.float16,
     )
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
