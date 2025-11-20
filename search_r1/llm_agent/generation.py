@@ -1,6 +1,7 @@
 import torch
 import re
-from typing import List, Dict, Any, Tuple, LiteralString
+from typing import List, Dict, Any, Tuple
+from typing_extensions import LiteralString
 from dataclasses import dataclass
 
 from torch import Tensor

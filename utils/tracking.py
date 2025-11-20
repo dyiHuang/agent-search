@@ -52,7 +52,7 @@ class Tracking(object):
             self.logger['mlflow'] = _MlflowLoggingAdapter()
 
         if 'console' in default_backend:
-            from verl.utils.logger.aggregate_logger import LocalLogger
+            from utils.logger.aggregate_logger import LocalLogger
             self.console_logger = LocalLogger(print_to_console=True)
             self.logger['console'] = self.console_logger
 

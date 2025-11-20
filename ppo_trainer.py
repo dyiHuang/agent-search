@@ -3,7 +3,7 @@ from typing import Dict
 
 import deepspeed
 import torch
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state
 from transformers import AutoTokenizer
 from peft import LoraConfig
 
@@ -17,27 +17,26 @@ from omegaconf import OmegaConf, open_dict
 import reward_score
 from deepspeed.accelerator import get_accelerator
 
-if get_accelerator().device_name() == 'cuda':
-    from apex.optimizers import FusedAdam as Adam
-else:
-    from torch.optim import AdamW as Adam
+# if get_accelerator().device_name() == 'cuda':
+#     from apex.optimizers import FusedAdam as Adam
+# else:
+#     from torch.optim import AdamW as Adam
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig, ChainedOptimizer
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
-
-from megatron.core.models.gpt import GPTModel
 
 
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
         self.config = config
         self._init_logger()
-        # 加载数据集（分布式采样）
-        self._create_dataloader()
 
         self.tokenizer = AutoTokenizer.from_pretrained(config.qwen_model_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        # 加载数据集（分布式采样）
+        self._create_dataloader()
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
@@ -53,9 +52,11 @@ class MegatronDeepSpeedPPOTrainer:
         )
 
         # 3. 构建 PPO 三模型
-        self.actor = build_qwen2_megatron_model(config.qwen_model_path, lora_config=self.lora_config)
-        self.critic = build_qwen2_megatron_model(config.qwen_model_path, lora_config=self.lora_config, is_critic=True)
-        self.reference = build_qwen2_megatron_model(config.qwen_model_path)
+        self.actor = build_qwen2_megatron_model(config=config, qwen_model_path=config.qwen_model_path,
+                                                lora_config=self.lora_config)
+        self.critic = build_qwen2_megatron_model(config=config, qwen_model_path=config.qwen_model_path,
+                                                 lora_config=self.lora_config, is_critic=True)
+        self.reference = build_qwen2_megatron_model(config=config, qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         for param in self.reference.parameters():
             param.requires_grad = False
@@ -66,9 +67,9 @@ class MegatronDeepSpeedPPOTrainer:
     def _init_logger(self):
         from utils.tracking import Tracking
         self.logger = Tracking(project_name=self.config.trainer.project_name,
-                          experiment_name=self.config.trainer.experiment_name,
-                          default_backend=self.config.trainer.logger,
-                          config=OmegaConf.to_container(self.config, resolve=True))
+                               experiment_name=self.config.trainer.experiment_name,
+                               default_backend=self.config.trainer.logger,
+                               config=OmegaConf.to_container(self.config, resolve=True))
 
     def _init_distributed(self):
         """初始化 Megatron + Deepspeed 分布式环境"""
@@ -80,8 +81,8 @@ class MegatronDeepSpeedPPOTrainer:
                                        self.config.megatron.pipeline_model_parallel_size)
         os.environ["RANK"] = str(self.config.megatron.rank)
         os.environ["LOCAL_RANK"] = str(self.config.megatron.local_rank)
-        if self.config.megatron.sequence_parallel:
-            os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        # if self.config.megatron.sequence_parallel:
+        #     os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         # 计算数据并行度（DP_SIZE = 总进程数 / (TP_SIZE * PP_SIZE)）
         world_size = int(os.environ.get("WORLD_SIZE", 1))
         tp_size = self.config.megatron.tensor_model_parallel_size
@@ -123,18 +124,18 @@ class MegatronDeepSpeedPPOTrainer:
                     f"PP group size={torch.distributed.get_world_size(pp_group)}, "
                     f"DP group size={torch.distributed.get_world_size(dp_group)}")
 
-            # -------------------------- 步骤 4：混合精度统一配置 --------------------------
-            # 与 DeepSpeed 配置保持一致（bf16/fp16/fp32）
-            if self.config.deepspeed.bf16.enabled:
-                torch.set_default_dtype(torch.bfloat16)  # 原生 API，所有张量默认 BF16
-                torch.backends.cuda.matmul.allow_tf32 = True
-                torch.backends.cudnn.allow_tf32 = True
-            elif self.config.deepspeed.fp16.enabled:
-                torch.set_default_dtype(torch.float16)
-                # from megatron.core.optimizer.fp16_optimizer import initialize_fp16_optimizer_states
-                # initialize_fp16_optimizer_states()
-            else:
-                torch.set_default_dtype(torch.float32)
+            # # -------------------------- 步骤 4：混合精度统一配置 --------------------------
+            # # 与 DeepSpeed 配置保持一致（bf16/fp16/fp32）
+            # if self.config.deepspeed.bf16.enabled:
+            #     torch.set_default_dtype(torch.bfloat16)  # 原生 API，所有张量默认 BF16
+            #     torch.backends.cuda.matmul.allow_tf32 = True
+            #     torch.backends.cudnn.allow_tf32 = True
+            # elif self.config.deepspeed.fp16.enabled:
+            #     torch.set_default_dtype(torch.float16)
+            #     # from megatron.core.optimizer.fp16_optimizer import initialize_fp16_optimizer_states
+            #     # initialize_fp16_optimizer_states()
+            # else:
+            #     torch.set_default_dtype(torch.float32)
 
             # -------------------------- 步骤 5：设置随机种子（确保可复现） --------------------------
             # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
@@ -157,7 +158,8 @@ class MegatronDeepSpeedPPOTrainer:
         #     betas=(0.9, 0.95),
         #     weight_decay=0.01
         # )
-        optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer), model_chunks=[self.actor])
+        optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
+                                           model_chunks=[self.actor])
         opt_param_scheduler = get_optimizer_param_scheduler(optimizer, config=self.config.actor.optimizer)
         assert isinstance(optimizer, ChainedOptimizer)
 
@@ -179,7 +181,8 @@ class MegatronDeepSpeedPPOTrainer:
         #     self.critic.parameters(),
         #     lr=self.config.critic.optimizer.lr,
         # )
-        critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer), model_chunks=[self.critic])
+        critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
+                                                  model_chunks=[self.critic])
         critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
                                                                    config=self.config.critic.optimizer)
         assert isinstance(critic_optimizer, ChainedOptimizer)
@@ -275,7 +278,6 @@ class MegatronDeepSpeedPPOTrainer:
         input_ids = batch["input_ids"].to('cuda')
         attention_mask = batch["attention_mask"].to('cuda')
         prompt_len = input_ids.shape[1]
-
 
         # 生成 response（actor模型）
         with torch.no_grad():
@@ -601,7 +603,6 @@ class MegatronDeepSpeedPPOTrainer:
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
 
-            self.critic_optimizer.step()
         return metrics
 
 

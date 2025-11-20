@@ -121,14 +121,14 @@ class Qwen2PreTrainedModel(PreTrainedModel):
 class Qwen2MegatronModel(MegatronModule):
     """Megatron 并行化的 Qwen2.5-3B 模型"""
 
-    def __init__(self, config, qwen_config: Qwen2Config, megatron_config: TransformerConfig):
+    def __init__(self, g_config, qwen_config: Qwen2Config, megatron_config: TransformerConfig):
         super().__init__(megatron_config)
         self.ddp_config = DistributedDataParallelConfig(use_megatron_fsdp=False)
         self.vocab_size = qwen_config.vocab_size
         self.hidden_size = qwen_config.hidden_size
-        self.num_layers = qwen_config.num_layers
+        self.num_layers = qwen_config.num_hidden_layers
         self.tp_size = megatron_config.tensor_model_parallel_size
-        self.micro_batch_size = config.megatron.micro_batch_size
+        self.micro_batch_size = g_config.actor.ppo_micro_batch_size
         self.pp_size = parallel_state.get_pipeline_model_parallel_world_size()  # 获取 PP 总进程数
         self.pp_rank = parallel_state.get_pipeline_model_parallel_rank()  # 当前 PP stage 编号（0~pp_size-1）
 
@@ -514,14 +514,15 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
     def __init__(
             self,
-            config,
+            g_config,
             qwen_config: Qwen2Config,
             megatron_config: TransformerConfig,
             freeze_actor_backbone: bool = True,  # 是否冻结Actor底层参数
             use_bias: bool = True  # 价值头是否使用偏置
     ):
         # 调用父类初始化（复用嵌入层、Transformer层、LayerNorm等）
-        super().__init__(config=config, qwen_config=qwen_config, megatron_config=megatron_config)
+        super().__init__(g_config=g_config, qwen_config=qwen_config, megatron_config=megatron_config)
+        self.micro_batch_size = g_config.critic.ppo_micro_batch_size
         self.freeze_actor_backbone = freeze_actor_backbone
 
         # 2. 价值输出头（兼容TP并行）
@@ -703,7 +704,13 @@ def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraCo
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
 
-    # 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
+    params_dtype = torch.get_default_dtype()
+    if config.deepspeed.bf16.enabled:
+        params_dtype = torch.bfloat16
+    if config.deepspeed.fp16.enabled:
+        params_dtype = torch.float16
+
+# 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
     megatron_config = TransformerConfig(
         hidden_size=qwen_config.hidden_size,
         num_layers=qwen_config.num_hidden_layers,
@@ -715,14 +722,14 @@ def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraCo
         init_method=torch.nn.init.xavier_uniform_,
         tensor_model_parallel_size=parallel_state.get_tensor_model_parallel_world_size(),
         pipeline_model_parallel_size=parallel_state.get_pipeline_model_parallel_world_size(),
-        params_dtype=torch.get_default_dtype(),
-        pipeline_dtype=torch.get_default_dtype(),
-        bf16=torch.get_default_dtype() == torch.bfloat16,
-        fp16=torch.get_default_dtype() == torch.float16,
+        params_dtype=params_dtype,
+        pipeline_dtype=params_dtype,
+        bf16=config.deepspeed.bf16.enabled,
+        fp16=config.deepspeed.fp16.enabled,
     )
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
-    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, torch_dtype=torch.float16)
+    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path)
     if not is_critic:
         model = Qwen2MegatronModel(config, qwen_config, megatron_config)
         model.cuda()
