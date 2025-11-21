@@ -10,7 +10,7 @@ tiktoken==0.12.0              # OpenAI风格token计数（PPO训练中样本截�
 
 # 2. 分布式训练（必选：多卡/大模型并行）
 deepspeed==0.18.0             # 分布式训练框架（ZeRO优化、混合精度）
-megatron-core @ file:///Users/huangdayi/project/github/Megatron-LM  # 本地Megatron核心（大模型并行关键）
+megatron-core @ file:///root/project/Megatron-LM  # 本地Megatron核心（大模型并行关键）
 Megatron==0.5.1               # Megatron配套工具（与megatron-core协同，确保并行配置）
 
 # 3. 数据处理（必选：数据集加载/解析）
