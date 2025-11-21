@@ -39,4 +39,4 @@ uvicorn==0.38.0
 fastapi==0.121.2
 
 # PyTorch官方源（确保安装GPU版本，避免CPU版兼容问题）
---extra-index-url https://download.pytorch.org/whl/cu121
+# --extra-index-url https://download.pytorch.org/whl/cu121
