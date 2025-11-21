@@ -21,7 +21,7 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
 
-import utils
+from utils import utils
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
 
 import core_algos
@@ -300,9 +300,9 @@ class Qwen2MegatronModel(MegatronModule):
                 forward_only=True,
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
-            logits = [
-                # c. 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
-                self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
+            # logits = [
+            #     # c. 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
+            #     self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
 
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
@@ -379,6 +379,7 @@ class Qwen2MegatronModel(MegatronModule):
         def loss_func(output, data):
             if forward_only:
                 if post_process_fn is None:
+                    output = self.gather_logits_across_tp(output)
                     return 1.0, output
                 else:
                     return 1.0, post_process_fn(output, data)
@@ -647,7 +648,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
             cliprange_value = meta_info['cliprange_value']
 
-            vpreds = output.logits  # (bs, sequence_length)
+            vpreds = output  # (bs, sequence_length)
             vpreds = vpreds[:, -response_length - 1:-1]
 
             vf_loss, vf_clipfrac = core_algos.compute_value_loss(vpreds=vpreds,

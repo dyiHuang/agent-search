@@ -29,6 +29,7 @@ from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfi
 
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
+        self.global_steps = None
         self.config = config
         self._init_logger()
 
@@ -390,7 +391,6 @@ class MegatronDeepSpeedPPOTrainer:
                                          dataloader_kwargs={'shuffle': self.config.actor.shuffle})
         metrics = {}
         for data in dataloader:
-            self.optimizer.zero_grad()
             # 模型前向传播
             metric_micro_batch = self.actor.forward_backward_batch(
                 batch=data,
@@ -462,9 +462,30 @@ class MegatronDeepSpeedPPOTrainer:
 
                 self.global_steps += 1
 
+                if self.global_steps % 100 == 0:
+                    print(f'train metrics: {metrics}, global_steps: {self.global_steps}')
+
+                if self.global_steps % self.config.trainer.log_interval == 0:
+                    # pprint(f'Final validation metrics: {val_metrics}')
+                    # 保存 checkpoint 到自定义路径
+                    checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
+                    self.actor.save_checkpoint(checkpoint_path)
+                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
+                    self.critic.save_checkpoint(checkpoint_path)
+
                 if self.global_steps >= self.total_training_steps:
                     # pprint(f'Final validation metrics: {val_metrics}')
+                    # 保存 checkpoint 到自定义路径
+                    checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
+                    self.actor.save_checkpoint(checkpoint_path)
+                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+                    self.critic.save_checkpoint(checkpoint_path)
                     return
+            # 保存 checkpoint 到自定义路径
+            checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
+            self.actor.save_checkpoint(checkpoint_path)
+            checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+            self.critic.save_checkpoint(checkpoint_path)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
