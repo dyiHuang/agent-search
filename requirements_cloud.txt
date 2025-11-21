@@ -15,7 +15,7 @@ Megatron==0.5.1               # Megatron配套工具（与megatron-core协同，
 
 # 3. 数据处理（必选：数据集加载/解析）
 datasets==4.2.0               # Hugging Face数据集管理（RLHF数据加载）
-pyarrow==14.0.1               # Parquet文件解析（数据格式，核心依赖）
+pyarrow>=21.0.0               # Parquet文件解析（数据格式，核心依赖）
 
 # 4. 配置管理（必选：训练参数配置）
 omegaconf==2.3.0              # 配置文件解析（处理YAML/JSON配置）
