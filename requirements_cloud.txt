@@ -1,7 +1,7 @@
 # 说明：仅保留支撑「大模型加载+分布式训练+数据处理+RL微调」的核心包，间接依赖会自动安装
 
 # 1. 基础框架（必选：模型训练/计算核心）
-torch==2.2.2+cu121            # PyTorch核心（GPU计算基础）
+torch==2.2.2            # PyTorch核心（GPU计算基础）
 torchdata==0.11.0             # PyTorch数据加载工具（大模型数据管道必需）
 transformers==4.57.1          # Hugging Face大模型加载（如LLaMA/OPT，核心依赖）
 tokenizers==0.22.1            # 高效分词器（transformers配套，手动安装更稳定）
