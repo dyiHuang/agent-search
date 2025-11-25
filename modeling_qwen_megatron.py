@@ -16,6 +16,7 @@ from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
+from megatron.core.enums import ModelType
 from peft import LoraConfig, get_peft_model
 from transformers import Qwen2Config
 from transformers.integrations import use_kernel_forward_from_hub
@@ -181,6 +182,7 @@ class Qwen2MegatronModel(MegatronModule):
                 self.hidden_size, self.vocab_size, config=megatron_config, bias=False,
                 init_method=megatron_config.init_method
             )
+        self.model_type = ModelType.encoder_or_decoder
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.
