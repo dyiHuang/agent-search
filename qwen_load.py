@@ -402,7 +402,7 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
 
         print("loading lm_head...")
         lm_head_weight = None
-        if pp_rank + 1 == pp_size:
+        if pp_rank + 1 == pp_size and qwen_model_module.lm_head is not None:
             lm_head_weight = qwen_model_module.lm_head.weight
 
         if is_value_model:
