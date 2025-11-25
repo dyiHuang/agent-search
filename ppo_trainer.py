@@ -178,7 +178,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
             model=self.actor,
             optimizer=optimizer.optimizer,
-            config=ds_config,
+            config=deepspeed_dict,
             mpu=parallel_state,
             lr_scheduler=opt_param_scheduler,
             # model_parameters=self.actor.parameters()
@@ -198,7 +198,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
             model=self.critic,
             optimizer=critic_optimizer.optimizer(),
-            config=ds_config,
+            config=deepspeed_dict,
             lr_scheduler=critic_opt_param_scheduler,
             # model_parameters=self.critic.parameters()
         )
