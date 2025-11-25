@@ -101,6 +101,7 @@ actor:
     end_weight_decay: 1e-6
     total_training_steps: 1005  # must be override by program
     use_checkpoint_opt_param_scheduler: True
+    override_opt_param_scheduler: False
 
 critic:
   load_weight: True
@@ -124,6 +125,7 @@ critic:
     end_weight_decay: 1e-6
     total_training_steps: 1000  # must be override by program
     use_checkpoint_opt_param_scheduler: True
+    override_opt_param_scheduler: False
 
 rollout:
   max_new_token: 512
