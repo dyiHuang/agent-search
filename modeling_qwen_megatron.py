@@ -247,7 +247,7 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = self.final_norm(hidden_states)
             logits = self.lm_head(hidden_states)
             # [s, b, h] -> [b, s, h]
-            logits = logits.transpose(1, 0).contiguous()
+            logits = logits[0].transpose(1, 0).contiguous()
             ori_input_ids.transpose(1, 0)
             # ori_attention_mask.transpose(1, 0)
 
