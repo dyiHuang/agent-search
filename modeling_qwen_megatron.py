@@ -203,6 +203,7 @@ class Qwen2MegatronModel(MegatronModule):
         rotary_pos_emb = None
         # [b, s, h] -> [s, b, h]
         input_ids = input_ids.transpose(1, 0).contiguous()
+        attention_mask = attention_mask.transpose(1, 0).contiguous()
         if self.pp_rank == 0:
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
@@ -238,6 +239,8 @@ class Qwen2MegatronModel(MegatronModule):
             logits = self.lm_head(hidden_states)
             # [s, b, h] -> [b, s, h]
             logits = logits.transpose(1, 0).contiguous()
+            input_ids.transpose(1, 0).contiguous()
+            attention_mask.transpose(1, 0).contiguous()
 
             # 若仅需最后一个token的logits，直接返回
             if only_last_token:
@@ -247,6 +250,8 @@ class Qwen2MegatronModel(MegatronModule):
             return logits
         # [s, b, h] -> [b, s, h]
         hidden_states = hidden_states.transpose(1, 0).contiguous()
+        input_ids.transpose(1, 0).contiguous()
+        attention_mask.transpose(1, 0).contiguous()
         return hidden_states
 
     @torch.no_grad()  # 生成过程禁用梯度计算
