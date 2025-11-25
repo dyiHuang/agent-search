@@ -177,7 +177,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
             model=self.actor,
-            optimizer=optimizer.optimizer(),
+            optimizer=optimizer.optimizer,
             config=ds_config,
             mpu=parallel_state,
             lr_scheduler=opt_param_scheduler,
