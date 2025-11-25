@@ -181,31 +181,39 @@ class MegatronDeepSpeedPPOTrainer:
         opt_param_scheduler = get_optimizer_param_scheduler(optimizer, config=self.config.actor.optimizer)
         assert isinstance(optimizer, ChainedOptimizer)
 
-        # 将 config.deepspeed 转换为 dict
-        # resolve=True 表示在转换前解析所有变量插值
-        deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
-        # DeepSpeed 配置（从 config dict 加载）
-        ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
-
-        parallel_state_patch.add_missing_mpu_methods()
-
+        # 1. 过滤掉空的 param_groups
+        #    创建一个新的列表来存放可训练参数非空的 groups
+        filtered_param_groups = []
         for param_group in optimizer.param_groups:
-            print(f"param_group params len:{len(param_group['params'])}")
-            print(f"first 5 params: {param_group['params'][0:5]}")
-            trainable = [param_to_name.get(param) for param in param_group['params'] if param.requires_grad]
-            print(f"param_group trainable params len:{len(trainable)}")
-            if len(trainable) > 5:
-                print(f"first 5 trainable params: {trainable[0:5]}")
+            trainable = sum(1 for param in param_group['params'] if param.requires_grad)
+            # 检查这个 group 的 'params' 列表是否为空
+            if trainable > 0:
+                filtered_param_groups.append(trainable)
+        # 2. 验证过滤后是否还有参数组
+        if not filtered_param_groups:
+            print(
+                f"[Rank {torch.distributed.get_rank()}] All param_groups are empty after filtering. No parameters to "
+                f"optimize.")
+            self.actor.step = lambda *args, **kwargs: None
+        else:
+            optimizer.optimizer().param_groups = filtered_param_groups
+            # 将 config.deepspeed 转换为 dict
+            # resolve=True 表示在转换前解析所有变量插值
+            deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
+            # DeepSpeed 配置（从 config dict 加载）
+            ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
 
-        # 初始化 DeepSpeed 引擎
-        self.actor, self.optimizer, _, _ = deepspeed.initialize(
-            model=self.actor,
-            optimizer=optimizer.optimizer,
-            config=deepspeed_dict,
-            mpu=parallel_state,
-            lr_scheduler=opt_param_scheduler,
-            # model_parameters=self.actor.parameters()
-        )
+            parallel_state_patch.add_missing_mpu_methods()
+
+            # 初始化 DeepSpeed 引擎
+            self.actor, self.optimizer, _, _ = deepspeed.initialize(
+                model=self.actor,
+                optimizer=optimizer.optimizer,
+                config=deepspeed_dict,
+                mpu=parallel_state,
+                lr_scheduler=opt_param_scheduler,
+                # model_parameters=self.actor.parameters()
+            )
 
         # # 优化配置
         # critic_optimizer = Adam(
