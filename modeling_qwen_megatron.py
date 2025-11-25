@@ -59,7 +59,7 @@ class Qwen2MegatronMLP(MLP):
 
 @use_kernel_forward_from_hub("RMSNorm")
 class Qwen2RMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps: float = 1e-6) -> None:
+    def __init__(self, config, hidden_size, eps: float = 1e-6) -> None:
         """
         Qwen2RMSNorm is equivalent to T5LayerNorm
         """
