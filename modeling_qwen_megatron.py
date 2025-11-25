@@ -202,13 +202,22 @@ class Qwen2MegatronModel(MegatronModule):
         hidden_states = None
         rotary_pos_emb = None
         ori_input_ids = input_ids
-        ori_attention_mask = attention_mask
+        # ori_attention_mask = attention_mask
         # [b, s, h] -> [s, b, h]
         input_ids = input_ids.transpose(1, 0).contiguous()
-        attention_mask = attention_mask.transpose(1, 0).contiguous()
+        # attention_mask = attention_mask.transpose(1, 0).contiguous()
         if self.pp_rank == 0:
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
+            # -------------------------- 修正注意力掩码维度 --------------------------
+            if attention_mask is not None:
+                # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
+                # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
+                attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+                # 2. 转换为与注意力分数匹配的掩码（-inf 表示屏蔽，0 表示保留）
+                # 注意：Qwen2.5 通常用 False 表示需要屏蔽的位置（padding）
+                attention_mask = attention_mask.to(dtype=hidden_states.dtype)  # 转换为与隐藏状态相同的 dtype
+                attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min  # 屏蔽位置设为负无穷
             seq_len = hidden_states.size(0)
 
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
@@ -242,7 +251,7 @@ class Qwen2MegatronModel(MegatronModule):
             # [s, b, h] -> [b, s, h]
             logits = logits.transpose(1, 0).contiguous()
             ori_input_ids.transpose(1, 0)
-            ori_attention_mask.transpose(1, 0)
+            # ori_attention_mask.transpose(1, 0)
 
             # 若仅需最后一个token的logits，直接返回
             if only_last_token:
@@ -253,7 +262,7 @@ class Qwen2MegatronModel(MegatronModule):
         # [s, b, h] -> [b, s, h]
         hidden_states = hidden_states.transpose(1, 0).contiguous()
         ori_input_ids.transpose(1, 0)
-        ori_attention_mask.transpose(1, 0)
+        # ori_attention_mask.transpose(1, 0)
         return hidden_states
 
     @torch.no_grad()  # 生成过程禁用梯度计算
