@@ -22,7 +22,7 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
 
-from utils import utils
+from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
 
 import core_algos
@@ -368,10 +368,10 @@ class Qwen2MegatronModel(MegatronModule):
         # broadcast from last pp rank to all other pp ranks
         # TODO: actually, we just need to control the sampling order.
         batch = batch.contiguous()
-        torch.distributed.broadcast(
+        torch_functional.broadcast_dict_tensor(
             batch,
             src=parallel_state.get_pipeline_model_parallel_last_rank(),
-            group=parallel_state.get_pipeline_model_parallel_group(), async_op=False)
+            group=parallel_state.get_pipeline_model_parallel_group())
 
         batches = self.split_dict_tensor_into_batches(batch, batch_size=self.micro_batch_size)
         # compute input shapes for pp stages
