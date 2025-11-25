@@ -150,3 +150,12 @@ trainer:
   test_freq: 2
   critic_warmup: 0
   log_interval: 500
+
+algorithm:
+  gamma: 1.0
+  lam: 1.0
+  adv_estimator: gae
+  kl_penalty: kl  # how to estimate kl divergence
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.001
