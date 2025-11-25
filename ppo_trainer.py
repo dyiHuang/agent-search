@@ -188,7 +188,7 @@ class MegatronDeepSpeedPPOTrainer:
             trainable = sum(1 for param in param_group['params'] if param.requires_grad)
             # 检查这个 group 的 'params' 列表是否为空
             if trainable > 0:
-                filtered_param_groups.append(trainable)
+                filtered_param_groups.append(param_group)
         # 2. 验证过滤后是否还有参数组
         if not filtered_param_groups:
             print(
