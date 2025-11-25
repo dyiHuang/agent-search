@@ -176,7 +176,7 @@ class Qwen2MegatronModel(MegatronModule):
         self.final_norm = None
         self.lm_head = None
         if self.pp_rank == self.pp_size - 1:
-            self.final_norm = Qwen2RMSNorm(self.hidden_size, eps=qwen_config.rms_norm_eps)
+            self.final_norm = Qwen2RMSNorm(g_config, self.hidden_size, eps=qwen_config.rms_norm_eps)
             self.lm_head = tensor_parallel.ColumnParallelLinear(
                 self.hidden_size, self.vocab_size, config=megatron_config, bias=False,
                 init_method=megatron_config.init_method
