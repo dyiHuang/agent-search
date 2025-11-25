@@ -207,7 +207,7 @@ class Qwen2MegatronModel(MegatronModule):
             seq_len = hidden_states.size(1)
 
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-            rotary_pos_emb = self.rotary_emb(seq_len, device=hidden_states.device)
+            rotary_pos_emb = self.rotary_emb(seq_len)
 
             # 提前处理 only_last_token（减少跨 stage 通信量）
             # if only_last_token:
@@ -597,7 +597,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
             seq_len = hidden_states.size(1)
-            rotary_pos_emb = self.rotary_emb(seq_len, device=hidden_states.device)
+            rotary_pos_emb = self.rotary_emb(seq_len)
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
