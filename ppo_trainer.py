@@ -196,7 +196,7 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.actor.step = lambda *args, **kwargs: None
         else:
-            optimizer.optimizer().param_groups = filtered_param_groups
+            optimizer.optimizer.param_groups = filtered_param_groups
             # 将 config.deepspeed 转换为 dict
             # resolve=True 表示在转换前解析所有变量插值
             deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
