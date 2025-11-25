@@ -744,12 +744,12 @@ def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraCo
     if not is_critic:
         model = Qwen2MegatronModel(config, qwen_config, megatron_config)
         model.cuda()
-        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), model, qwen_config,
+        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], qwen_config,
                                                    megatron_config.params_dtype)
     else:
         model = Qwen2MegatronCritic(config, qwen_config, megatron_config)
         model.cuda()
-        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), model, qwen_config,
+        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], qwen_config,
                                                    megatron_config.params_dtype, is_value_model=is_critic)
 
     # 集成LoRa（仅对 Attention 层的 proj 层添加 LoRa）
