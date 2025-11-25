@@ -169,8 +169,9 @@ class MegatronDeepSpeedPPOTrainer:
         #     betas=(0.9, 0.95),
         #     weight_decay=0.01
         # )
+        param_to_name = {param: name for name, param in self.actor.named_parameters()}
         if self.actor is not None:
-            trainable = [param for param in self.actor.parameters() if param.requires_grad]
+            trainable = [param_to_name.get(param) for param in self.actor.parameters() if param.requires_grad]
             print(f"actor trainable params len:{len(trainable)}")
             if len(trainable) > 5:
                 print(f"first 5 actor trainable params: {trainable[0:5]}")
@@ -191,11 +192,10 @@ class MegatronDeepSpeedPPOTrainer:
         for param_group in optimizer.param_groups:
             print(f"param_group params len:{len(param_group['params'])}")
             print(f"first 5 params: {param_group['params'][0:5]}")
-            trainable = [param for param in param_group['params'] if param.requires_grad]
+            trainable = [param_to_name.get(param) for param in param_group['params'] if param.requires_grad]
             print(f"param_group trainable params len:{len(trainable)}")
             if len(trainable) > 5:
                 print(f"first 5 trainable params: {trainable[0:5]}")
-
 
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
