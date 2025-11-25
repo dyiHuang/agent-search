@@ -181,10 +181,16 @@ class MegatronDeepSpeedPPOTrainer:
         opt_param_scheduler = get_optimizer_param_scheduler(optimizer, config=self.config.actor.optimizer)
         assert isinstance(optimizer, ChainedOptimizer)
 
+        # 将 config.deepspeed 转换为 dict
+        # resolve=True 表示在转换前解析所有变量插值
+        deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
+        # DeepSpeed 配置（从 config dict 加载）
+        ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
+
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
         filtered_param_groups = []
-        for param_group in optimizer.param_groups:
+        for param_group in optimizer.optimizer.param_groups:
             trainable = sum(1 for param in param_group['params'] if param.requires_grad)
             # 检查这个 group 的 'params' 列表是否为空
             if trainable > 0:
@@ -192,16 +198,11 @@ class MegatronDeepSpeedPPOTrainer:
         # 2. 验证过滤后是否还有参数组
         if not filtered_param_groups:
             print(
-                f"[Rank {torch.distributed.get_rank()}] All param_groups are empty after filtering. No parameters to "
+                f"[Rank {torch.distributed.get_rank()}] All actor param_groups are empty after filtering. No parameters to "
                 f"optimize.")
             self.actor.step = lambda *args, **kwargs: None
         else:
             optimizer.optimizer.param_groups = filtered_param_groups
-            # 将 config.deepspeed 转换为 dict
-            # resolve=True 表示在转换前解析所有变量插值
-            deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
-            # DeepSpeed 配置（从 config dict 加载）
-            ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
 
             parallel_state_patch.add_missing_mpu_methods()
 
@@ -226,13 +227,30 @@ class MegatronDeepSpeedPPOTrainer:
                                                                    config=self.config.critic.optimizer)
         assert isinstance(critic_optimizer, ChainedOptimizer)
 
-        self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
-            model=self.critic,
-            optimizer=critic_optimizer.optimizer,
-            config=deepspeed_dict,
-            lr_scheduler=critic_opt_param_scheduler,
-            # model_parameters=self.critic.parameters()
-        )
+        # 1. 过滤掉空的 param_groups
+        #    创建一个新的列表来存放可训练参数非空的 groups
+        filtered_param_groups_critic = []
+        for param_group in critic_optimizer.optimizer.param_groups:
+            trainable = sum(1 for param in param_group['params'] if param.requires_grad)
+            # 检查这个 group 的 'params' 列表是否为空
+            if trainable > 0:
+                filtered_param_groups_critic.append(param_group)
+        # 2. 验证过滤后是否还有参数组
+        if not filtered_param_groups_critic:
+            print(
+                f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
+                f"parameters to"
+                f"optimize.")
+            self.actor.step = lambda *args, **kwargs: None
+        else:
+            critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
+            self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
+                model=self.critic,
+                optimizer=critic_optimizer.optimizer,
+                config=deepspeed_dict,
+                lr_scheduler=critic_opt_param_scheduler,
+                # model_parameters=self.critic.parameters()
+            )
 
     # def _load_dataset(self):
     #     """加载分布式数据集（每个 rank 处理部分数据）"""
