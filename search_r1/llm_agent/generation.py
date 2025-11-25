@@ -184,8 +184,8 @@ class LLMGenerationManager:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
-                eos_token_id=self.tokenizer.token_to_id(self.tokenizer.eos_token),
-                pad_token_id=self.tokenizer.token_to_id(self.tokenizer.pad_token_id),
+                eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+                pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token_id),
                 temperature=self.g_config.rollout.temperature,
                 attention_mask=active_batch["attention_mask"].to('cuda'),
                 top_k=self.g_config.rollout.top_k,
@@ -207,8 +207,8 @@ class LLMGenerationManager:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
-                eos_token_id=self.tokenizer.token_to_id(self.tokenizer.eos_token),
-                pad_token_id=self.tokenizer.token_to_id(self.tokenizer.pad_token_id),
+                eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+                pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token_id),
                 temperature=self.g_config.rollout.temperature,
                 attention_mask=active_batch["attention_mask"].to('cuda'),
                 top_k=self.g_config.rollout.top_k,
@@ -237,8 +237,8 @@ class LLMGenerationManager:
         padded_output = self.actor.generate(
             input_ids=padded_active_batch["input_ids"].to('cuda'),
             max_length=self.g_config.rollout.max_new_token,
-            eos_token_id=self.tokenizer.token_to_id(self.tokenizer.eos_token),
-            pad_token_id=self.tokenizer.token_to_id(self.tokenizer.pad_token_id),
+            eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+            pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token_id),
             temperature=self.g_config.rollout.temperature,
             attention_mask=padded_active_batch["attention_mask"].to('cuda'),
             top_k=self.g_config.rollout.top_k,
