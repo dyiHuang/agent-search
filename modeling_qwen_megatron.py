@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core import parallel_state, tensor_parallel, pipeline_parallel
+from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.transformer_layer import TransformerConfig, TransformerLayer, TransformerLayerSubmodules
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -30,7 +31,13 @@ from tensordict import TensorDict
 
 
 class Qwen2MegatronAttention(SelfAttention):
-    def __init__(self, config: TransformerConfig, layer_number: int):
+    def __init__(self,
+                 config: TransformerConfig,
+                 layer_number: int,
+                 attn_mask_type=AttnMaskType.padding,
+                 cp_comm_type: str = None,
+                 pg_collection: ProcessGroupCollection = None
+                 ):
         super().__init__(
             config,
             submodules=SelfAttentionSubmodules(
@@ -41,6 +48,9 @@ class Qwen2MegatronAttention(SelfAttention):
                 k_layernorm=IdentityOp,
             ),
             layer_number=layer_number,
+            attn_mask_type=attn_mask_type,
+            cp_comm_type=cp_comm_type,
+            pg_collection=pg_collection,
         )
 
 
