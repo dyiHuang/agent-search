@@ -79,6 +79,8 @@ class Qwen2RMSNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
+        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
@@ -232,6 +234,8 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = layer(
                 hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
             )
+        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
+        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
             # PP 下无需在层循环中处理 only_last_token（已在 stage 0 处理或后续 stage 保持）
             # if only_last_token:
             #     # 仅保留最后一个token的hidden states，减少后续计算量
@@ -609,12 +613,19 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         """
         # -------------------------- 1. 第一个 PP stage：执行嵌入层 + Rotary 编码 --------------------------
         # 嵌入 + Rotary 编码
-        hidden_states = None
         rotary_pos_emb = None
+        ori_input_ids = input_ids
+        # [b, s, h] -> [s, b, h]
+        input_ids = input_ids.transpose(1, 0).contiguous()
         if self.pp_rank == 0:
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
-            seq_len = hidden_states.size(1)
+            # -------------------------- 修正注意力掩码维度 --------------------------
+            if attention_mask is not None:
+                # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
+                # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
+                attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            seq_len = hidden_states.size(0)
             rotary_pos_emb = self.rotary_emb(seq_len)
         else:
             # self.hidden_states should be passed by Megatron
@@ -626,6 +637,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             hidden_states = layer(
                 hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
             )
+        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
+        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
 
         # 输出
         if self.pp_rank == self.pp_size - 1:
@@ -634,6 +647,10 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
             # 4. 价值预测（标量输出）
             value_preds = self.value_head(hidden_states)  # [batch, seq_len, 1]
+
+            # [s, b, h] -> [b, s, h]
+            value_preds = value_preds.transpose(1, 0).contiguous()
+            ori_input_ids.transpose(1, 0)
 
             # 5. 仅保留最后一个token的价值（PPO核心用法）
             if only_last_token:
