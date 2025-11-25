@@ -651,6 +651,7 @@ def get_optimizer_param_scheduler(optimizer, config):
         optimizer,
         max_lr=config.lr,
         min_lr=config.min_lr,
+        init_lr=config.min_lr,
         lr_warmup_steps=lr_warmup_steps,
         lr_decay_steps=lr_decay_steps,
         lr_decay_style=config.lr_decay_style,
