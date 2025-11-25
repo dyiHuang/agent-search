@@ -207,7 +207,7 @@ class Qwen2MegatronModel(MegatronModule):
         if self.pp_rank == 0:
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
-            seq_len = hidden_states.size(1)
+            seq_len = hidden_states.size(0)
 
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
             rotary_pos_emb = self.rotary_emb(seq_len)
