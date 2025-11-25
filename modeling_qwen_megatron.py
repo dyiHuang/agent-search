@@ -79,8 +79,6 @@ class Qwen2RMSNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
-        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
@@ -234,8 +232,8 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = layer(
                 hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
             )
-        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
-        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
+            # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
+            hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
             # PP 下无需在层循环中处理 only_last_token（已在 stage 0 处理或后续 stage 保持）
             # if only_last_token:
             #     # 仅保留最后一个token的hidden states，减少后续计算量
@@ -637,8 +635,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             hidden_states = layer(
                 hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
             )
-        # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
-        hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
+            # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
+            hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
 
         # 输出
         if self.pp_rank == self.pp_size - 1:
