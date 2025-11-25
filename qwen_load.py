@@ -329,7 +329,7 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
     assert num_layers_per_model * pp_size * virtual_pp_size == config.num_hidden_layers
 
     for i, model in enumerate(models):
-        assert len(model.model.layers) == num_layers_per_model
+        assert len(model.layers) == num_layers_per_model
 
     if dp_rank == 0:
         # Embeddings
