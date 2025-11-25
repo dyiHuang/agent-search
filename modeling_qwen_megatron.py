@@ -382,7 +382,7 @@ class Qwen2MegatronModel(MegatronModule):
         #         'hidden_size': self.hidden_size
         #     })
         n_micro_batch = len(batches)
-        seq_len = batches[0].shape[1]
+        seq_len = batches[0]["input_ids"].shape[1]
 
         forward_backward_func = pipeline_parallel.get_forward_backward_func()
 
