@@ -12,7 +12,7 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits
 from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, model_parallel_cuda_manual_seed
 
 import core_algos
-from utils import utils
+from utils import utils, parallel_state_patch
 from modeling_qwen_megatron import build_qwen2_megatron_model
 from omegaconf import OmegaConf, open_dict
 import reward_score
@@ -173,6 +173,8 @@ class MegatronDeepSpeedPPOTrainer:
         deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
         # DeepSpeed 配置（从 config dict 加载）
         ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
+
+        parallel_state_patch.add_missing_mpu_methods()
 
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
