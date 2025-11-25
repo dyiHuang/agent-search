@@ -159,3 +159,4 @@ algorithm:
   kl_ctrl:
     type: fixed
     kl_coef: 0.001
+  no_think_rl: False
