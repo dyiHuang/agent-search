@@ -342,7 +342,7 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = self.actor.generate(
                     input_ids=input_ids,
                     max_length=self.config.rollout.max_new_token,
-                    eos_token=self.tokenizer.eos_token,
+                    eos_token_id=self.tokenizer.eos_token,
                     pad_token_id=self.tokenizer.pad_token,
                     temperature=self.config.rollout.temperature,
                     attention_mask=attention_mask,

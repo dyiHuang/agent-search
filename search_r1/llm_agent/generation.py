@@ -184,7 +184,7 @@ class LLMGenerationManager:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
-                eos_token=self.tokenizer.eos_token,
+                eos_token_id=self.tokenizer.eos_token,
                 pad_token_id=self.tokenizer.pad_token,
                 temperature=self.g_config.rollout.temperature,
                 attention_mask=active_batch["attention_mask"].to('cuda'),
@@ -207,7 +207,7 @@ class LLMGenerationManager:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token,
-                eos_token=self.tokenizer.eos_token,
+                eos_token_id=self.tokenizer.eos_token,
                 pad_token_id=self.tokenizer.pad_token,
                 temperature=self.g_config.rollout.temperature,
                 attention_mask=active_batch["attention_mask"].to('cuda'),
@@ -237,7 +237,7 @@ class LLMGenerationManager:
         padded_output = self.actor.generate(
             input_ids=padded_active_batch["input_ids"].to('cuda'),
             max_length=self.g_config.rollout.max_new_token,
-            eos_token=self.tokenizer.eos_token,
+            eos_token_id=self.tokenizer.eos_token,
             pad_token_id=self.tokenizer.pad_token,
             temperature=self.g_config.rollout.temperature,
             attention_mask=padded_active_batch["attention_mask"].to('cuda'),
