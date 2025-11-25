@@ -182,6 +182,12 @@ class MegatronDeepSpeedPPOTrainer:
 
         parallel_state_patch.add_missing_mpu_methods()
 
+        for param_group in optimizer.param_groups:
+            print(f"param_group params len:{len(param_group['params'])}")
+            trainable = [param for param in param_group['params'] if param.requires_grad]
+            print(f"param_group trainable params len:{len(trainable)}")
+
+
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
             model=self.actor,
@@ -205,7 +211,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
             model=self.critic,
-            optimizer=critic_optimizer.optimizer(),
+            optimizer=critic_optimizer.optimizer,
             config=deepspeed_dict,
             lr_scheduler=critic_opt_param_scheduler,
             # model_parameters=self.critic.parameters()
