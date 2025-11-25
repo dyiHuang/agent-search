@@ -338,7 +338,7 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
         qwen_model_module = _get_qwen_model(models[0])
         embed_tokens_weight = None
         if pp_rank == 0:
-            embed_tokens_weight = qwen_model_module.embed_tokens.weight
+            embed_tokens_weight = qwen_model_module.embedding.weight
         _broadcast_tp_shard_tensor_vocab(embed_tokens_weight, "model.embed_tokens.weight", state_dict, mp_group, params_dtype)
 
         # Transformer layers
