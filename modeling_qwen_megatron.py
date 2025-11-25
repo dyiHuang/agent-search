@@ -214,10 +214,6 @@ class Qwen2MegatronModel(MegatronModule):
                 # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
                 # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-                # 2. 转换为与注意力分数匹配的掩码（-inf 表示屏蔽，0 表示保留）
-                # 注意：Qwen2.5 通常用 False 表示需要屏蔽的位置（padding）
-                attention_mask = attention_mask.to(dtype=hidden_states.dtype)  # 转换为与隐藏状态相同的 dtype
-                attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min  # 屏蔽位置设为负无穷
             seq_len = hidden_states.size(0)
 
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
