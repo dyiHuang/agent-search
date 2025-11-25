@@ -31,6 +31,7 @@ deepspeed:
       device: none
     overlap_comm: True  # 通信与计算重叠（加速训练）
     contiguous_gradients: True  # 连续梯度（减少内存碎片）
+    ignore_unused_parameters: True
 
   fp16:  # 混合精度配置（与 megatron-core 统一）
     enabled: False  # 禁用 FP16
