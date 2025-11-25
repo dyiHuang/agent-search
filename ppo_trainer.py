@@ -170,11 +170,11 @@ class MegatronDeepSpeedPPOTrainer:
         #     weight_decay=0.01
         # )
         param_to_name = {param: name for name, param in self.actor.named_parameters()}
-        if self.actor is not None:
-            trainable = [param_to_name.get(param) for param in self.actor.parameters() if param.requires_grad]
-            print(f"actor trainable params len:{len(trainable)}")
-            if len(trainable) > 5:
-                print(f"first 5 actor trainable params: {trainable[0:5]}")
+
+        trainable = [param_to_name.get(param) for param in self.actor.parameters() if param.requires_grad]
+        print(f"actor trainable params len:{len(trainable)}")
+        if len(trainable) > 5:
+            print(f"first 5 actor trainable params: {trainable[0:5]}")
 
         optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
                                            model_chunks=[self.actor])
