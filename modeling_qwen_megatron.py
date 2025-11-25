@@ -553,7 +553,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             # 初始化分类头（可选：若从预训练模型加载，可跳过；若随机初始化，建议用Xavier）
             if hasattr(self.value_head, 'weight'):
                 nn.init.xavier_uniform_(self.value_head.weight)
-            if hasattr(self.value_head, 'bias') and self.classifier.bias is not None:
+            if hasattr(self.value_head, 'bias') and self.value_head.bias is not None:
                 nn.init.zeros_(self.value_head.bias)
 
         # 4. 冻结Actor底层参数（可选，根据训练策略调整）
