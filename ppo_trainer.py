@@ -9,7 +9,7 @@ from peft import LoraConfig
 
 from tensordict import TensorDict
 from tensor_parallel import vocab_parallel_log_probs_from_logits
-from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
+from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, model_parallel_cuda_manual_seed
 
 import core_algos
 from utils import utils
@@ -142,11 +142,12 @@ class MegatronDeepSpeedPPOTrainer:
             # -------------------------- 步骤 5：设置随机种子（确保可复现） --------------------------
             # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
             seed = self.config.megatron.seed
-            torch.manual_seed(seed + rank)
-            torch.cuda.manual_seed(seed + rank)
-            torch.cuda.manual_seed_all(seed + rank)
-            rng_tracker = get_cuda_rng_tracker()
-            rng_tracker.add("model-parallel-rng", seed=seed)
+            # torch.manual_seed(seed + rank)
+            # torch.cuda.manual_seed(seed + rank)
+            # torch.cuda.manual_seed_all(seed + rank)
+            model_parallel_cuda_manual_seed(seed, te_rng_tracker=True, inference_rng_tracker=True)
+            # rng_tracker = get_cuda_rng_tracker()
+            # rng_tracker.add("model-parallel-rng", seed=seed)
             import numpy as np
             np.random.seed(seed + rank)
             import random
