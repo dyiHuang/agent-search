@@ -96,9 +96,9 @@ actor:
     lr_decay_style: cosine  # select from constant/cosine
     clip_grad: 1.0
     lr_warmup_fraction: 0.285  # the total steps will be injected during runtime
-    weight_decay_incr_style: constant  # select from constant/cosine
+    weight_decay_incr_style: linear  # select from constant/cosine
     start_weight_decay: 0.
-    end_weight_decay: 1e-6
+    end_weight_decay: 1e-7
     total_training_steps: 1005  # must be override by program
     use_checkpoint_opt_param_scheduler: True
     override_opt_param_scheduler: False
@@ -120,7 +120,7 @@ critic:
     lr_decay_style: cosine  # select from constant/cosine
     clip_grad: 1.0
     lr_warmup_fraction: 0.015  # the total steps will be injected during runtime
-    weight_decay_incr_style: cosine  # select from constant/cosine
+    weight_decay_incr_style: linear  # select from constant/cosine
     start_weight_decay: 0.
     end_weight_decay: 1e-6
     total_training_steps: 1000  # must be override by program
