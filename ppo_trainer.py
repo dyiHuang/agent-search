@@ -607,9 +607,9 @@ class MegatronDeepSpeedPPOTrainer:
         def compute_logprobs_fn(output, data):
             _response = data["responses"]
             _response_length = _response.size(1)
-            # 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
-            _logits = self.reference.gather_logits_across_tp(output)
-            _logits = _logits[:, -_response_length - 1:-1]
+            # # 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
+            # _logits = self.reference.gather_logits_across_tp(output)
+            _logits = output[:, -_response_length - 1:-1]
             _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)
             return _log_probs
 

@@ -522,7 +522,7 @@ class Qwen2MegatronModel(MegatronModule):
             return logits  # 单卡无需聚合
 
         # 使用Megatron的tensor_model_parallel_all_gather聚合（跨TP进程）
-        gathered_logits = tensor_parallel.gather_from_sequence_parallel_region(
+        gathered_logits = tensor_parallel.gather_from_tensor_model_parallel_region(
             logits,
             group=parallel_state.get_tensor_model_parallel_group()
         )
