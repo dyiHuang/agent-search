@@ -119,7 +119,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # -------------------------- 步骤 3：megatron-core 模型并行组初始化 --------------------------
         # 基于 DeepSpeed 的全局进程组，创建 TP/PP/DP 组（DP 组复用 DeepSpeed 的数据并行组）
-        if not parallel_state.is_model_parallel_initialized():
+        if not parallel_state.model_parallel_is_initialized():
             parallel_state.initialize_model_parallel(
                 tensor_model_parallel_size=tp_size,
                 pipeline_model_parallel_size=pp_size,
