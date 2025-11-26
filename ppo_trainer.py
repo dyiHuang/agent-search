@@ -385,6 +385,8 @@ class MegatronDeepSpeedPPOTrainer:
                                            dtype=attention_mask.dtype)
         mask = torch.cat((attention_mask, response_mask), dim=-1)
 
+        print(f"input dtype: {outputs.dtype}, weight dtype: {mask.dtype}")
+
         # 计算 reference 的 log_prob
         ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
 
