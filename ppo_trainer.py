@@ -113,54 +113,55 @@ class MegatronDeepSpeedPPOTrainer:
         rank = torch.distributed.get_rank()
         is_main_process = (rank == 0)
 
-        if is_main_process:
-            print(f"DeepSpeed distributed init finished：WORLD_SIZE={world_size}, RANK={rank}, LOCAL_RANK={local_rank}")
-            print(f"parallel config：TP={tp_size}, PP={pp_size}, DP={dp_size}")
+        # if is_main_process:
+        print(f"DeepSpeed distributed init finished：WORLD_SIZE={world_size}, RANK={rank}, LOCAL_RANK={local_rank}")
+        print(f"parallel config：TP={tp_size}, PP={pp_size}, DP={dp_size}")
 
-            # -------------------------- 步骤 3：megatron-core 模型并行组初始化 --------------------------
-            # 基于 DeepSpeed 的全局进程组，创建 TP/PP/DP 组（DP 组复用 DeepSpeed 的数据并行组）
+        # -------------------------- 步骤 3：megatron-core 模型并行组初始化 --------------------------
+        # 基于 DeepSpeed 的全局进程组，创建 TP/PP/DP 组（DP 组复用 DeepSpeed 的数据并行组）
+        if not parallel_state.is_model_parallel_initialized():
             parallel_state.initialize_model_parallel(
                 tensor_model_parallel_size=tp_size,
                 pipeline_model_parallel_size=pp_size,
                 virtual_pipeline_model_parallel_size=None  # RL/微调场景禁用虚拟流水线
             )
 
-            # 验证并行组（确保与 DeepSpeed 进程组兼容）
-            tp_group = parallel_state.get_tensor_model_parallel_group()
-            dp_group = parallel_state.get_data_parallel_group()
-            pp_group = parallel_state.get_pipeline_model_parallel_group()
-            if is_main_process:
-                print(
-                    f"megatron-core parallel group：TP group size={torch.distributed.get_world_size(tp_group)}, "
-                    f"PP group size={torch.distributed.get_world_size(pp_group)}, "
-                    f"DP group size={torch.distributed.get_world_size(dp_group)}")
+        # 验证并行组（确保与 DeepSpeed 进程组兼容）
+        tp_group = parallel_state.get_tensor_model_parallel_group()
+        dp_group = parallel_state.get_data_parallel_group()
+        pp_group = parallel_state.get_pipeline_model_parallel_group()
+        if is_main_process:
+            print(
+                f"megatron-core parallel group：TP group size={torch.distributed.get_world_size(tp_group)}, "
+                f"PP group size={torch.distributed.get_world_size(pp_group)}, "
+                f"DP group size={torch.distributed.get_world_size(dp_group)}")
 
-            # # -------------------------- 步骤 4：混合精度统一配置 --------------------------
-            # # 与 DeepSpeed 配置保持一致（bf16/fp16/fp32）
-            # if self.config.deepspeed.bf16.enabled:
-            #     torch.set_default_dtype(torch.bfloat16)  # 原生 API，所有张量默认 BF16
-            #     torch.backends.cuda.matmul.allow_tf32 = True
-            #     torch.backends.cudnn.allow_tf32 = True
-            # elif self.config.deepspeed.fp16.enabled:
-            #     torch.set_default_dtype(torch.float16)
-            #     # from megatron.core.optimizer.fp16_optimizer import initialize_fp16_optimizer_states
-            #     # initialize_fp16_optimizer_states()
-            # else:
-            #     torch.set_default_dtype(torch.float32)
+        # # -------------------------- 步骤 4：混合精度统一配置 --------------------------
+        # # 与 DeepSpeed 配置保持一致（bf16/fp16/fp32）
+        # if self.config.deepspeed.bf16.enabled:
+        #     torch.set_default_dtype(torch.bfloat16)  # 原生 API，所有张量默认 BF16
+        #     torch.backends.cuda.matmul.allow_tf32 = True
+        #     torch.backends.cudnn.allow_tf32 = True
+        # elif self.config.deepspeed.fp16.enabled:
+        #     torch.set_default_dtype(torch.float16)
+        #     # from megatron.core.optimizer.fp16_optimizer import initialize_fp16_optimizer_states
+        #     # initialize_fp16_optimizer_states()
+        # else:
+        #     torch.set_default_dtype(torch.float32)
 
-            # -------------------------- 步骤 5：设置随机种子（确保可复现） --------------------------
-            # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
-            seed = self.config.megatron.seed
-            # torch.manual_seed(seed + rank)
-            # torch.cuda.manual_seed(seed + rank)
-            # torch.cuda.manual_seed_all(seed + rank)
-            model_parallel_cuda_manual_seed(seed, te_rng_tracker=True, inference_rng_tracker=True)
-            # rng_tracker = get_cuda_rng_tracker()
-            # rng_tracker.add("model-parallel-rng", seed=seed)
-            import numpy as np
-            np.random.seed(seed + rank)
-            import random
-            random.seed(seed + rank)
+        # -------------------------- 步骤 5：设置随机种子（确保可复现） --------------------------
+        # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
+        seed = self.config.megatron.seed
+        # torch.manual_seed(seed + rank)
+        # torch.cuda.manual_seed(seed + rank)
+        # torch.cuda.manual_seed_all(seed + rank)
+        model_parallel_cuda_manual_seed(seed, te_rng_tracker=True, inference_rng_tracker=True)
+        # rng_tracker = get_cuda_rng_tracker()
+        # rng_tracker.add("model-parallel-rng", seed=seed)
+        import numpy as np
+        np.random.seed(seed + rank)
+        import random
+        random.seed(seed + rank)
 
     def _init_deepspeed(self):
         """初始化deepspeed引擎（仅优化 LoRa 参数）"""
