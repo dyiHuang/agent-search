@@ -68,8 +68,8 @@ class MegatronDeepSpeedPPOTrainer:
         self.reference.eval()
         for param in self.reference.parameters():
             param.requires_grad = False
-            param.float()
-            param.data.float()
+            param.to(dtype=torch.float32)
+            param.data.to(dtype=torch.float32)
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
