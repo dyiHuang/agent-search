@@ -78,7 +78,7 @@ megatron:
 #  sequence_parallel: True
   seed: 1
 
-do_search: True   # online search
+do_search: False   # online search
 max_turns: 3
 
 actor:

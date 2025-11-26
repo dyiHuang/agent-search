@@ -348,8 +348,8 @@ class MegatronDeepSpeedPPOTrainer:
                     attention_mask=attention_mask,
                     top_k=self.config.rollout.top_k,
                 )
-
-                responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
+                utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
+                # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
             else:
                 # Agent config preparation
                 gen_config = GenerationConfig(
@@ -386,9 +386,9 @@ class MegatronDeepSpeedPPOTrainer:
         mask = torch.cat((attention_mask, response_mask), dim=-1)
 
         # 计算 reference 的 log_prob
-        ref_log_probs = self._compute_ref_log_probs(outputs, mask, responses[:, prompt_len:])
+        ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
 
-        return responses[:, prompt_len:], outputs, ref_log_probs, response_mask, mask
+        return outputs[:, prompt_len:], outputs, ref_log_probs, response_mask, mask
 
     @staticmethod
     def _get_eos_mask(response_id: torch.Tensor, eos_token: int = 2, dtype=torch.int64):
