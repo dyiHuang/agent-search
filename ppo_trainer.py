@@ -494,17 +494,22 @@ class MegatronDeepSpeedPPOTrainer:
             for batch_dict in self.train_dataloader:
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
+                utils.print_rank_0(f"rollout successful:{self.global_steps}, "
+                                   f"responses:{self.tokenizer.convert_ids_to_tokens(responses[0])}")
 
                 # 2. 计算奖励
                 rewards = self._compute_reward(batch_dict, responses)
+                utils.print_rank_0(f"_compute_reward successful:{self.global_steps}")
 
                 # 3. Critic 预测价值
                 critic_values = self.compute_values(dialogue_ids, responses, attention_mask)
+                utils.print_rank_0(f"compute_values successful:{self.global_steps}")
 
                 # 4. 计算优势函数
                 advantages, returns = core_algos.compute_gae_advantage_return(rewards,
                                                                               critic_values,
                                                                               eos_mask=response_mask)
+                utils.print_rank_0(f"compute_gae_advantage_return successful:{self.global_steps}")
 
                 # 5. 更新价值网络
                 metrics_critic = self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
