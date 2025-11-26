@@ -112,6 +112,7 @@ class MegatronDeepSpeedPPOTrainer:
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
         rank = torch.distributed.get_rank()
         is_main_process = (rank == 0)
+        torch.cuda.set_device(local_rank)
 
         # if is_main_process:
         print(f"DeepSpeed distributed init finished：WORLD_SIZE={world_size}, RANK={rank}, LOCAL_RANK={local_rank}")

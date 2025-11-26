@@ -314,7 +314,7 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
     pp_rank = parallel_state.get_pipeline_model_parallel_rank()
     pp_size = parallel_state.get_pipeline_model_parallel_world_size()
     virtual_pp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size() or 1
-    mp_group = parallel_state.get_tensor_model_parallel_group()
+    mp_group = parallel_state.get_model_parallel_group()
 
     if torch.distributed.get_rank() == 0:
         assert mp_group.rank() == 0, f"mp_rank:[{mp_group.rank}] != 0 on rank #0"
