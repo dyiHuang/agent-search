@@ -88,10 +88,10 @@ class MegatronDeepSpeedPPOTrainer:
         # 加载配置
         os.environ["MASTER_ADDR"] = self.config.megatron.master_addr
         os.environ["MASTER_PORT"] = str(self.config.megatron.master_port)
-        os.environ["WORLD_SIZE"] = str(self.config.megatron.tensor_model_parallel_size *
-                                       self.config.megatron.pipeline_model_parallel_size)
-        os.environ["RANK"] = str(self.config.megatron.rank)
-        os.environ["LOCAL_RANK"] = str(self.config.megatron.local_rank)
+        # os.environ["WORLD_SIZE"] = str(self.config.megatron.tensor_model_parallel_size *
+        #                                self.config.megatron.pipeline_model_parallel_size)
+        # os.environ["RANK"] = str(self.config.megatron.rank)
+        # os.environ["LOCAL_RANK"] = str(self.config.megatron.local_rank)
         # if self.config.megatron.sequence_parallel:
         #     os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         # 计算数据并行度（DP_SIZE = 总进程数 / (TP_SIZE * PP_SIZE)）
