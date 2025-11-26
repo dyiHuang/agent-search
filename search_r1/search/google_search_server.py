@@ -149,9 +149,11 @@ class OnlineSearchEngine:
             return list(executor.map(self._retrieve_context, queries))
 
     def _retrieve_context(self, query: str) -> List[str]:
-        
+
+        return [""]
+
+        search_results = self.search(query)
         if self.config.snippet_only:
-            search_results = self.search(query)
             contexts = []
             for result in search_results:
                 for item in result.get("items", []):
@@ -179,7 +181,7 @@ class OnlineSearchEngine:
                             contexts.append({
                                 'document': {"contents": f'\"{title}\"\n{context}'},
                             })
-        
+
         return contexts[:self.config.topk]
 
 

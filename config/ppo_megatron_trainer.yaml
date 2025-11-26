@@ -144,8 +144,8 @@ trainer:
   experiment_name: nq_search_r1
 #  logger: ['console', 'wandb']
   logger: ['console']
-  nnodes: 2
-  n_gpus_per_node: 4
+  nnodes: 1
+  n_gpus_per_node: 1
   save_freq: -1
   test_freq: 2
   critic_warmup: 0
