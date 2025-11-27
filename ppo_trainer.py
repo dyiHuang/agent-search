@@ -722,7 +722,7 @@ class MegatronDeepSpeedPPOTrainer:
                     print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
                 else:
                     grad_norm = param.grad.norm().item()
-                    print(f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad.item()}")  # 需>0才正常
+                    print(f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
             self.critic_value_head.step(lr_kwargs={'increment': increment})
 
