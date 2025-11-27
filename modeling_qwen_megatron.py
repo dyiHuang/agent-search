@@ -434,7 +434,7 @@ class Qwen2MegatronModel(MegatronModule):
 
             # compute policy loss
             logits = output
-            logits = logits[:, -response_length - 1:-1]
+            logits = logits[:, -response_length - 1:-1].contiguous()
             log_prob = vocab_parallel_log_probs_from_logits(logits, responses)
             pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=ref_log_probs,
                                                                           log_prob=log_prob,
