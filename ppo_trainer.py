@@ -73,6 +73,8 @@ class MegatronDeepSpeedPPOTrainer:
         self.reference.config.autocast_dtype = torch.bfloat16
         self.critic.config.enable_autocast = True
         self.critic.config.autocast_dtype = torch.bfloat16
+        self.actor.config.enable_autocast = True
+        self.actor.config.autocast_dtype = torch.bfloat16
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
