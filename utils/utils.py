@@ -18,28 +18,29 @@ def append_to_dict(data: Dict, new_data: Dict):
 
 
 class TensorDictDataset(Dataset):
-    def __init__(self, tensor_dict: TensorDict):
+    def __init__(self, tensor_dict: Dict[str, torch.Tensor]):  # 明确输入为字典（key是字符串，value是张量）
         super().__init__()
         self.tensor_dict = tensor_dict
-        # 自动获取 batch_size（优先用 TensorDict 的 batch_size 属性，没有则取第一个 key 的第 0 维）
-        if hasattr(tensor_dict, "batch_size"):
-            self.batch_size = tensor_dict.batch_size
-        else:
-            # 确保所有 key 的张量第 0 维（batch 维）一致
-            first_key = next(tensor_dict[0].keys().__iter__())
-            self.batch_size = tensor_dict[first_key].shape[0]
-            # 校验所有 key 的 batch 维一致（避免报错）
-            for key, tensor in tensor_dict.items():
-                assert tensor.shape[
-                           0] == self.batch_size, f"Key {key} 的 batch 维大小（{tensor.shape[0]}）与预期（{self.batch_size}）不一致"
+
+        # 1. 优先从张量的第一维获取batch_size（最可靠）
+        first_key = next(iter(tensor_dict.keys()))  # 正确获取第一个key
+        first_tensor = tensor_dict[first_key]
+        self.batch_size = first_tensor.shape[0]  # 张量第一维是样本数（整数）
+
+        # 2. 校验所有张量的batch维一致
+        for key, tensor in tensor_dict.items():
+            if not isinstance(tensor, torch.Tensor):
+                raise TypeError(f"Key {key} 的值不是张量（类型：{type(tensor)}）")
+            assert tensor.shape[0] == self.batch_size, \
+                f"Key {key} 的batch维（{tensor.shape[0]}）与预期（{self.batch_size}）不一致"
 
     def __len__(self) -> int:
-        """返回样本总数"""
+        """返回样本总数（确保是整数）"""
         return self.batch_size
 
-    def __getitem__(self, idx: int) -> TensorDict:
-        """按索引提取单个样本（保留 TensorDict 结构）"""
-        return self.tensor_dict[idx]  # 关键：TensorDict 支持索引切片，自动拆分单个样本
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        """按索引提取单个样本（保留字典结构）"""
+        return {key: tensor[idx] for key, tensor in self.tensor_dict.items()}
 
 
 def clip_by_value(x, tensor_min, tensor_max):
