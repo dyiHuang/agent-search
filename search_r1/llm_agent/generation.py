@@ -183,7 +183,7 @@ class LLMGenerationManager:
         if num_gpus <= 1:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token,
+                max_length=self.g_config.rollout.max_new_token+prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                 pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                 temperature=self.g_config.rollout.temperature,
@@ -206,7 +206,7 @@ class LLMGenerationManager:
         if remainder == 0:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token,
+                max_length=self.g_config.rollout.max_new_token+prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                 pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                 temperature=self.g_config.rollout.temperature,
@@ -236,7 +236,7 @@ class LLMGenerationManager:
         # Generate with padded batch
         padded_output = self.actor.generate(
             input_ids=padded_active_batch["input_ids"].to('cuda'),
-            max_length=self.g_config.rollout.max_new_token,
+            max_length=self.g_config.rollout.max_new_token+prompt_len,
             eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
             pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
             temperature=self.g_config.rollout.temperature,
