@@ -26,7 +26,6 @@ from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig, Cha
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
-from deepspeed.runtime.zero import
 
 
 class MegatronDeepSpeedPPOTrainer:
