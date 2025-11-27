@@ -547,13 +547,14 @@ class MegatronDeepSpeedPPOTrainer:
                                                                               eos_mask=response_mask)
                 utils.print_rank_0(f"compute_gae_advantage_return successful:{self.global_steps}")
 
+                # 6. 更新策略
+                metrics_actor = self._update_policy(ref_log_probs, responses, advantages, attention_mask)
+                metrics.update(metrics_actor)
+
                 # 5. 更新价值网络
                 metrics_critic = self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
                 metrics.update(metrics_critic)
 
-                # 6. 更新策略
-                metrics_actor = self._update_policy(ref_log_probs, responses, advantages, attention_mask)
-                metrics.update(metrics_actor)
 
                 self.logger.log(data=metrics, step=self.global_steps)
 
