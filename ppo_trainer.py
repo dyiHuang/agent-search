@@ -27,6 +27,12 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
 
+from torch.utils.tensorboard import SummaryWriter
+
+# 初始化 Writer（指定日志目录）
+writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
+
+
 
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
@@ -574,12 +580,15 @@ class MegatronDeepSpeedPPOTrainer:
                 metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
                 metrics.update(metrics_actor)
 
+                # ds tensorboard
+                self.write_ds_scalars(metrics)
+
                 self.logger.log(data=metrics, step=self.global_steps)
 
                 self.global_steps += 1
 
                 if self.global_steps % 100 == 0:
-                    print(f'train metrics: {metrics}, global_steps: {self.global_steps}')
+                    utils.print_rank_0(f'train metrics: {metrics}, global_steps: {self.global_steps}')
 
                 if self.global_steps % self.config.trainer.log_interval == 0:
                     # pprint(f'Final validation metrics: {val_metrics}')
@@ -602,6 +611,16 @@ class MegatronDeepSpeedPPOTrainer:
             self.actor.save_checkpoint(checkpoint_path)
             checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
             self.critic.save_checkpoint(checkpoint_path)
+
+    def write_ds_scalars(self, metrics):
+        if torch.distributed.get_rank() == 0:
+            writer.add_scalar("train/actor/entropy_loss", sum(metrics['actor/entropy_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_loss", sum(metrics['actor/pg_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_clipfrac", sum(metrics['actor/pg_clipfrac']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/ppo_kl", sum(metrics['actor/ppo_kl']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_loss", sum(metrics['critic/vf_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_clipfrac", sum(metrics['critic/vf_clipfrac']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vpred_mean", sum(metrics['critic/vpred_mean']), global_step=self.global_steps)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
