@@ -346,7 +346,7 @@ class MegatronDeepSpeedPPOTrainer:
             if not self.config.do_search:
                 outputs = self.actor.generate(
                     input_ids=input_ids,
-                    max_length=self.config.rollout.max_new_token,
+                    max_length=self.config.rollout.max_new_token+prompt_len,
                     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                     pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                     temperature=self.config.rollout.temperature,
@@ -354,6 +354,7 @@ class MegatronDeepSpeedPPOTrainer:
                     top_k=self.config.rollout.top_k,
                 )
                 utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
+                utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
                 # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
             else:
                 # Agent config preparation
@@ -390,6 +391,7 @@ class MegatronDeepSpeedPPOTrainer:
                                            dtype=attention_mask.dtype)
         batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
         mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
+        batch["attention_mask"] = mask
 
         print(f"input dtype: {outputs.dtype}, weight dtype: {mask.dtype}")
 
