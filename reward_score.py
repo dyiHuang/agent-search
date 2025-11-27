@@ -29,8 +29,8 @@ class RewardManager:
 
         already_print_data_sources = {}
 
-        for i in range(len(data)):
-            data_item = data[i]  # DataProtoItem
+        for i in range(len(reward_tensor)):
+            data_item = {key: data[key][i] for key in data}
 
             prompt_ids = data_item['prompts']
 
@@ -45,12 +45,12 @@ class RewardManager:
 
             # decode
             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
-            sequences_str = self.tokenizer.decode(sequences)
+            sequences_str = self.tokenizer.convert_ids_to_tokens(sequences)
 
-            ground_truth = data_item['reward_model'][i]['ground_truth']
+            ground_truth = data_item['reward_model']['ground_truth']
 
             # select rm_score
-            data_source = data_item['data_source'][i]
+            data_source = data_item['data_source']
 
             score = compute_score_em(solution_str=sequences_str, ground_truth=ground_truth,
                                      format_score=self.format_score)
