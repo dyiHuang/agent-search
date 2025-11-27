@@ -157,7 +157,7 @@ class MegatronDeepSpeedPPOTrainer:
         # -------------------------- 步骤 5：设置随机种子（确保可复现） --------------------------
         # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
         seed = self.config.megatron.seed
-        # torch.manual_seed(seed + rank)
+        torch.manual_seed(seed + rank)
         # torch.cuda.manual_seed(seed + rank)
         # torch.cuda.manual_seed_all(seed + rank)
         model_parallel_cuda_manual_seed(seed, te_rng_tracker=True, inference_rng_tracker=True)
