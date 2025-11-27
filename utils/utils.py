@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Union
 from tensordict import TensorDict
 from torch.utils.data import DataLoader, Dataset
 import torch
@@ -18,7 +18,7 @@ def append_to_dict(data: Dict, new_data: Dict):
 
 
 class TensorDictDataset(Dataset):
-    def __init__(self, tensor_dict: Dict[str, torch.Tensor]):  # 明确输入为字典（key是字符串，value是张量）
+    def __init__(self, tensor_dict: Union[Dict[str, torch.Tensor], TensorDict]):  # 明确输入为字典（key是字符串，value是张量）
         super().__init__()
         self.tensor_dict = tensor_dict
 
