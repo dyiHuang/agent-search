@@ -247,11 +247,11 @@ class MegatronDeepSpeedPPOTrainer:
                 f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
                 f"parameters to"
                 f"optimize.")
-            self.critic.step = lambda *args, **kwargs: None
+            self.critic.critic_value_head = lambda *args, **kwargs: None
         else:
 
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
-            self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
+            self.critic_value_head, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic.value_head,
                 optimizer=critic_optimizer.optimizer,
                 model_parameters=self.critic.value_head.parameters(),
@@ -706,7 +706,7 @@ class MegatronDeepSpeedPPOTrainer:
 
             print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
 
-            self.critic.step(lr_kwargs={'increment': increment})
+            self.critic_value_head.step(lr_kwargs={'increment': increment})
 
             update_successful = self.critic.was_step_applied()
             utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
