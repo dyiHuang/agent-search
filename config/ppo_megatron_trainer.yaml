@@ -78,8 +78,8 @@ megatron:
 #  sequence_parallel: True
   seed: 1
 
-do_search: False   # online search
-max_turns: 3
+do_search: True   # online search
+max_turns: 1
 
 actor:
   strategy: megatron  # This is for backward-compatibility

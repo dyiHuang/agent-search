@@ -346,7 +346,7 @@ class MegatronDeepSpeedPPOTrainer:
             if not self.config.do_search:
                 outputs = self.actor.generate(
                     input_ids=input_ids,
-                    max_length=self.config.rollout.max_new_token+prompt_len,
+                    max_length=self.config.rollout.max_new_token + prompt_len,
                     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                     pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                     temperature=self.config.rollout.temperature,
@@ -356,6 +356,13 @@ class MegatronDeepSpeedPPOTrainer:
                 utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
                 utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
                 # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
+                response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
+                                                   eos_token=self.tokenizer.eos_token_id,
+                                                   dtype=attention_mask.dtype)
+                batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
+                mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
+                batch["attention_mask"] = mask
+                response = outputs[:, prompt_len:]
             else:
                 # Agent config preparation
                 gen_config = GenerationConfig(
@@ -385,20 +392,18 @@ class MegatronDeepSpeedPPOTrainer:
                 for key in final_gen_batch_output[0].keys():
                     if isinstance(final_gen_batch_output[0][key], torch.Tensor):
                         final_gen_batch_output[0][key] = final_gen_batch_output[0][key].long()
-
-        response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
-                                           eos_token=self.tokenizer.eos_token_id,
-                                           dtype=attention_mask.dtype)
-        batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
-        mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
-        batch["attention_mask"] = mask
+                mask = final_gen_batch_output[0]['attention_mask'].bool()
+                batch["attention_mask"] = mask
+                batch['prompts'] = final_gen_batch_output[0]['prompts']
+                outputs = final_gen_batch_output[0]['input_ids']
+                response = outputs[:, prompt_len:]
 
         print(f"input dtype: {outputs.dtype}, weight dtype: {mask.dtype}")
 
         # 计算 reference 的 log_prob
         ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
 
-        return outputs[:, prompt_len:], outputs, ref_log_probs, response_mask, mask
+        return response, outputs, ref_log_probs, response_mask, mask
 
     @staticmethod
     def _get_eos_mask(response_id: torch.Tensor, eos_token: int = 2, dtype=torch.int64):

@@ -7,6 +7,8 @@ import numpy as np
 import tensordict
 import torch
 
+from utils import utils
+
 
 class RewardManager:
     """The reward manager.
@@ -40,6 +42,7 @@ class RewardManager:
             prompt_length = prompt_ids.shape[-1]
 
             valid_prompt_length = data_item['attention_mask'][:prompt_length].sum()
+            utils.print_rank_0(f"valid_prompt_length : {valid_prompt_length}")
             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
             response_ids = data_item['responses']
