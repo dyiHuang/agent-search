@@ -594,6 +594,8 @@ class MegatronDeepSpeedPPOTrainer:
             else:
                 values = torch.empty_like(attention_mask, dtype=torch.float32)
 
+            utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {values.shape}")
+            utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {values.device}")
             # each tp ranks should contain the same value
             values = values * attention_mask
             values = values[:, -response_length - 1:-1]
