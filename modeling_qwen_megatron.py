@@ -345,17 +345,21 @@ class Qwen2MegatronModel(MegatronModule):
                                      dtype=torch.float32,
                                      device=input_ids.device)
 
+            utils.print_rank_0(f"before broadcast, logits shape : {logits.shape}")
             # broadcast across pp ranks
             torch.distributed.broadcast(tensor=logits,
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
 
+            utils.print_rank_0(f"after broadcast, logits shape : {logits.shape}")
+
             # d. 应用温度采样和Top-K过滤
             logits = logits / temperature  # 温度调整
             if top_k is not None and top_k > 0:
                 logits = self._top_k_filter(logits, top_k)  # Top-K过滤
 
+            utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
             next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
             next_token = torch.multinomial(next_token_log_probs.squeeze(1), num_samples=1)  # [batch_size, 1]
