@@ -439,6 +439,7 @@ class MegatronDeepSpeedPPOTrainer:
         batch["responses"] = responses
         rm = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)
         rewards = rm(batch)
+        rewards = rewards.to('cpu')
         return rewards
 
     def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
