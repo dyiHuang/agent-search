@@ -357,6 +357,9 @@ class MegatronDeepSpeedPPOTrainer:
                 utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
                 # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
                 batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
+                response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
+                                                   eos_token=self.tokenizer.eos_token_id,
+                                                   dtype=attention_mask.dtype)
                 mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
                 batch["attention_mask"] = mask
                 response = outputs[:, prompt_len:]
@@ -396,7 +399,7 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
-        print(f"input dtype: {outputs.dtype}, weight dtype: {mask.dtype}")
+        print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
                                            dtype=attention_mask.dtype)
@@ -577,10 +580,11 @@ class MegatronDeepSpeedPPOTrainer:
 
     def compute_values(self, outputs, responses, attention_mask):
         response_length = responses.size(1)
+        attention_mask = attention_mask.to('cuda')
         batches = TensorDict(
             source={
                 "input_ids": outputs.to('cuda'),
-                "attention_mask": attention_mask.to('cuda'),
+                "attention_mask": attention_mask,
                 "responses": responses.to('cuda'),
             },
             batch_size=responses.shape[0])

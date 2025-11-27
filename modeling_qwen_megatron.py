@@ -664,6 +664,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                     value_preds, normalized_shape=value_preds.shape[1:], eps=1e-5
                 )
             value_preds = value_preds.float()
+            value_preds = torch.squeeze(value_preds, dim=-1)
             return value_preds
 
         return hidden_states
