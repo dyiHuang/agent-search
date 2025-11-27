@@ -46,7 +46,7 @@ class RewardManager:
 
             # decode
             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
-            sequences_str = self.tokenizer.convert_ids_to_tokens(sequences)
+            sequences_str = self.tokenizer.decode(sequences)
 
             ground_truth = data_item['reward_model']['ground_truth']
 
