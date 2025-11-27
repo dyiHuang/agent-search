@@ -475,7 +475,7 @@ class MegatronDeepSpeedPPOTrainer:
                 meta_info=meta_info
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
-            increment = data.batch_size()
+            increment = data.batch_size[0]
 
             self.actor.step(lr_kwargs={'increment': increment})
 
@@ -697,7 +697,7 @@ class MegatronDeepSpeedPPOTrainer:
         for data in dataloader:
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
 
-            increment = data.batch_size()
+            increment = data.batch_size[0]
 
             self.critic.step(lr_kwargs={'increment': increment})
 
