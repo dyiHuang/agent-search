@@ -392,6 +392,7 @@ class MegatronDeepSpeedPPOTrainer:
                 mask = final_gen_batch_output[0]['attention_mask'].bool()
                 batch["attention_mask"] = mask
                 batch['prompts'] = final_gen_batch_output[0]['prompts']
+                prompt_len = batch['prompts'].shape[1]
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
