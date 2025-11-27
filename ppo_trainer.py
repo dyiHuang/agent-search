@@ -251,8 +251,17 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.critic.critic_value_head = lambda *args, **kwargs: None
         else:
+            value_head_param_ids = {id(param) for param in self.critic.value_head.parameters()}
+            final_filtered_groups = []
+            for param_group in filtered_param_groups_critic:
+                # 筛选属于value_head的参数
+                filtered_params = [p for p in param_group['params'] if id(p) in value_head_param_ids]
+                if filtered_params:
+                    new_param_group = param_group.copy()
+                    new_param_group['params'] = filtered_params
+                    final_filtered_groups.append(new_param_group)
 
-            critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
+            critic_optimizer.optimizer.param_groups = final_filtered_groups
             self.critic_value_head, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic.value_head,
                 optimizer=critic_optimizer.optimizer,
