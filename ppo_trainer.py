@@ -447,11 +447,11 @@ class MegatronDeepSpeedPPOTrainer:
 
         batches = TensorDict(
             source={
-                "input_ids": outputs,
-                "attention_mask": mask,
-                "responses": responses,
-                "ref_log_probs": ref_log_probs,
-                "advantages": advantages,
+                "input_ids": outputs.to('cuda'),
+                "attention_mask": mask.to('cuda'),
+                "responses": responses.to('cuda'),
+                "ref_log_probs": ref_log_probs.to('cuda'),
+                "advantages": advantages.to('cuda'),
             },
             batch_size=outputs.shape[0])
 
@@ -677,11 +677,11 @@ class MegatronDeepSpeedPPOTrainer:
     def _update_critic(self, input_ids, attention_mask, responses, values, returns):
         batches = TensorDict(
             source={
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "responses": responses,
-                "values": values,
-                "returns": returns,
+                "input_ids": input_ids.to('cuda'),
+                "attention_mask": attention_mask.to('cuda'),
+                "responses": responses.to('cuda'),
+                "values": values.to('cuda'),
+                "returns": returns.to('cuda'),
             },
             batch_size=input_ids.shape[0])
         batches.to('cuda')
