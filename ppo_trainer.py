@@ -70,9 +70,9 @@ class MegatronDeepSpeedPPOTrainer:
             param.requires_grad = False
             # param.data = param.data.to(torch.float32)
         self.reference.config.enable_autocast = True
-        self.reference.config.autocast_dtype = torch.float32
+        self.reference.config.autocast_dtype = torch.bfloat16
         self.critic.config.enable_autocast = True
-        self.critic.config.autocast_dtype = torch.float32
+        self.critic.config.autocast_dtype = torch.bfloat16
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
