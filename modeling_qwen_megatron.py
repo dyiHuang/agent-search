@@ -717,7 +717,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             micro_batch = next(batch_iter)
             output = model(input_ids=micro_batch["input_ids"], attention_mask=micro_batch["attention_mask"],
                            only_last_token=only_last_token)
-            return output, partial(loss_func, data=batch, meta_info={})
+            return output, partial(loss_func, data=batch)
 
         # batch should be a list of batches inside micro-batches
         batch_generator = self.make_batch_generator(batches, vpp_size=1)
