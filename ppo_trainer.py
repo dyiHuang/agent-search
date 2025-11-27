@@ -221,7 +221,6 @@ class MegatronDeepSpeedPPOTrainer:
                 # model_parameters=self.actor.parameters()
             )
             print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
-            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
 
         # # 优化配置
         # critic_optimizer = Adam(
@@ -254,13 +253,12 @@ class MegatronDeepSpeedPPOTrainer:
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
                 optimizer=critic_optimizer.optimizer,
-                model_parameters=self.critic.value_head,
+                model_parameters=self.critic.value_head.parameters(),
                 config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
                 # model_parameters=self.critic.parameters()
             )
             print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
-            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
 
     # def _load_dataset(self):
     #     """加载分布式数据集（每个 rank 处理部分数据）"""
@@ -482,6 +480,7 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
+            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
             self.actor.step(lr_kwargs={'increment': increment})
 
             update_successful = self.actor.was_step_applied()
@@ -703,6 +702,8 @@ class MegatronDeepSpeedPPOTrainer:
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
 
             increment = data.batch_size[0]
+
+            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
 
             self.critic.step(lr_kwargs={'increment': increment})
 
