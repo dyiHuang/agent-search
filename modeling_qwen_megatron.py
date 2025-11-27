@@ -588,11 +588,16 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
     def _freeze_actor_components(self):
         """冻结Actor的底层特征提取组件，仅训练价值头"""
-        for param in self.embedding.parameters():
-            param.requires_grad = False
+        if not self.embedding:
+            for param in self.embedding.parameters():
+                param.requires_grad = False
+        if not self.rotary_emb:
+            for param in self.rotary_emb.parameters():
+                param.requires_grad = False
         for param in self.layers.parameters():
             param.requires_grad = False
-        self.final_norm.requires_grad_(False)  # RMSNorm通常也冻结
+        if not self.final_norm:
+            self.final_norm.requires_grad_(False)  # RMSNorm通常也冻结
 
     def forward(
             self,
