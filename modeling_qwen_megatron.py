@@ -578,14 +578,15 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
             # 初始化分类头（可选：若从预训练模型加载，可跳过；若随机初始化，建议用Xavier）
             if parallel_state.get_tensor_model_parallel_rank() == 0:
-                self.value_head.weight = nn.init.xavier_uniform_(self.value_head.weight).to('cuda')
+                nn.init.xavier_uniform_(self.value_head.weight)
                 if hasattr(self.value_head, 'bias') and self.value_head.bias is not None:
                     nn.init.zeros_(self.value_head.bias)
             else:
-                self.value_head.weight = nn.init.zeros_(self.value_head.weight).to('cuda')
+                nn.init.zeros_(self.value_head.weight)
                 if hasattr(self.value_head, 'bias') and self.value_head.bias is not None:
                     nn.init.zeros_(self.value_head.bias)
 
+            self.value_head.weight = self.value_head.weight.to('cuda')
             # 广播rank0的参数到所有TP rank
             torch.distributed.broadcast(
                 self.value_head.weight,
