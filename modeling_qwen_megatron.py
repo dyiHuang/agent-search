@@ -586,10 +586,10 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 if hasattr(self.value_head, 'bias') and self.value_head.bias is not None:
                     nn.init.zeros_(self.value_head.bias)
 
-            self.value_head.weight = self.value_head.weight.to('cuda')
+            self.value_head.weight.data = self.value_head.weight.data.to('cuda')
             # 广播rank0的参数到所有TP rank
             torch.distributed.broadcast(
-                self.value_head.weight,
+                self.value_head.weight.data,
                 src=0,  # TP group内的rank0
                 group=parallel_state.get_tensor_model_parallel_group()
             )
