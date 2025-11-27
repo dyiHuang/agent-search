@@ -673,8 +673,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         # broadcast from last pp rank to all other pp ranks
         batch = batch.contiguous()
         torch_functional.broadcast_dict_tensor(batch,
-                                                src=parallel_state.get_pipeline_model_parallel_last_rank(),
-                                                group=parallel_state.get_pipeline_model_parallel_group())
+                                               src=parallel_state.get_pipeline_model_parallel_last_rank(),
+                                               group=parallel_state.get_pipeline_model_parallel_group())
         # split into micro-batches
         batch['attention_mask'] = batch['attention_mask'].to(bool)
         batches = self.split_dict_tensor_into_batches(batch, batch_size=self.micro_batch_size)
@@ -760,7 +760,7 @@ def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraCo
     if config.deepspeed.fp16.enabled:
         params_dtype = torch.float16
 
-# 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
+    # 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
     megatron_config = TransformerConfig(
         hidden_size=qwen_config.hidden_size,
         num_layers=qwen_config.num_hidden_layers,

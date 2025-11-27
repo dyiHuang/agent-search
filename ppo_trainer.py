@@ -579,9 +579,9 @@ class MegatronDeepSpeedPPOTrainer:
         response_length = responses.size(1)
         batches = TensorDict(
             source={
-                "input_ids": outputs,
-                "attention_mask": attention_mask,
-                "responses": responses,
+                "input_ids": outputs.to('cuda'),
+                "attention_mask": attention_mask.to('cuda'),
+                "responses": responses.to('cuda'),
             },
             batch_size=responses.shape[0])
         batches.to('cuda')
