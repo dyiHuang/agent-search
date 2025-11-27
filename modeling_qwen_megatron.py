@@ -672,7 +672,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                                forward_only=False, post_process_fn=None, meta_info: Dict = None):
         # broadcast from last pp rank to all other pp ranks
         batch = batch.contiguous()
-        torch.distributed.broadcast_dict_tensor(batch,
+        torch_functional.broadcast_dict_tensor(batch,
                                                 src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                                 group=parallel_state.get_pipeline_model_parallel_group())
         # split into micro-batches
