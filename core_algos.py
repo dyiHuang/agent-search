@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from megatron.core import tensor_parallel
 
-import utils
+from utils import utils
 
 
 def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange):
