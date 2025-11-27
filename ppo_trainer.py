@@ -253,21 +253,28 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.critic.critic_value_head = lambda *args, **kwargs: None
         else:
-            value_head_param_ids = {id(param) for param in self.critic.value_head.parameters()}
-            final_filtered_groups = []
-            for param_group in filtered_param_groups_critic:
-                # 筛选属于value_head的参数
-                filtered_params = [p for p in param_group['params'] if id(p) in value_head_param_ids]
-                if filtered_params:
-                    new_param_group = param_group.copy()
-                    new_param_group['params'] = filtered_params
-                    final_filtered_groups.append(new_param_group)
+            # value_head_param_ids = {id(param) for param in self.critic.value_head.parameters()}
+            # final_filtered_groups = []
+            # for param_group in filtered_param_groups_critic:
+            #     # 筛选属于value_head的参数
+            #     filtered_params = [p for p in param_group['params'] if id(p) in value_head_param_ids]
+            #     if filtered_params:
+            #         new_param_group = param_group.copy()
+            #         new_param_group['params'] = filtered_params
+            #         final_filtered_groups.append(new_param_group)
 
-            critic_optimizer.optimizer.param_groups = final_filtered_groups
-            self.critic_value_head, self.critic_optimizer, _, _ = deepspeed.initialize(
-                model=self.critic.value_head,
+            critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
+            # self.critic_value_head, self.critic_optimizer, _, _ = deepspeed.initialize(
+            #     model=self.critic.value_head,
+            #     optimizer=critic_optimizer.optimizer,
+            #     model_parameters=self.critic.value_head.parameters(),
+            #     config=deepspeed_dict,
+            #     lr_scheduler=critic_opt_param_scheduler,
+            #     # model_parameters=self.critic.parameters()
+            # )
+            self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
+                model=self.critic,
                 optimizer=critic_optimizer.optimizer,
-                model_parameters=self.critic.value_head.parameters(),
                 config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
                 # model_parameters=self.critic.parameters()
@@ -736,9 +743,11 @@ class MegatronDeepSpeedPPOTrainer:
                     grad_norm = param.grad.norm().item()
                     print(f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
-            self.critic_value_head.allreduce_gradients()
+            # self.critic_value_head.allreduce_gradients()
+            # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
-            self.critic_value_head.step(lr_kwargs={'increment': increment})
+            self.critic.allreduce_gradients()
+            self.critic.step(lr_kwargs={'increment': increment})
 
             update_successful = self.critic.was_step_applied()
             utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
