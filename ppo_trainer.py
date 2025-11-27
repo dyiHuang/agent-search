@@ -220,6 +220,8 @@ class MegatronDeepSpeedPPOTrainer:
                 lr_scheduler=opt_param_scheduler,
                 # model_parameters=self.actor.parameters()
             )
+            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
+            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
 
         # # 优化配置
         # critic_optimizer = Adam(
@@ -246,16 +248,19 @@ class MegatronDeepSpeedPPOTrainer:
                 f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
                 f"parameters to"
                 f"optimize.")
-            self.actor.step = lambda *args, **kwargs: None
+            self.critic.step = lambda *args, **kwargs: None
         else:
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
                 optimizer=critic_optimizer.optimizer,
+                model_parameters=self.critic.value_head,
                 config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
                 # model_parameters=self.critic.parameters()
             )
+            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
+            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
 
     # def _load_dataset(self):
     #     """加载分布式数据集（每个 rank 处理部分数据）"""
