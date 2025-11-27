@@ -18,12 +18,12 @@ def append_to_dict(data: Dict, new_data: Dict):
 
 
 class TensorDictDataset(Dataset):
-    def __init__(self, tensor_dict: Union[Dict[str, torch.Tensor], TensorDict]):  # 明确输入为字典（key是字符串，value是张量）
+    def __init__(self, tensor_dict: TensorDict):  # 明确输入为字典（key是字符串，value是张量）
         super().__init__()
         self.tensor_dict = tensor_dict
 
         # 1. 优先从张量的第一维获取batch_size（最可靠）
-        first_key = next(iter(tensor_dict.keys()))  # 正确获取第一个key
+        first_key = next(iter(tensor_dict.keys().__iter__()))  # 正确获取第一个key
         first_tensor = tensor_dict[first_key]
         self.batch_size = first_tensor.shape[0]  # 张量第一维是样本数（整数）
 
@@ -38,9 +38,9 @@ class TensorDictDataset(Dataset):
         """返回样本总数（确保是整数）"""
         return self.batch_size
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> TensorDict:
         """按索引提取单个样本（保留字典结构）"""
-        return {key: tensor[idx] for key, tensor in self.tensor_dict.items()}
+        return self.tensor_dict[idx]
 
 
 def clip_by_value(x, tensor_min, tensor_max):
