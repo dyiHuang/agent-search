@@ -559,14 +559,13 @@ class MegatronDeepSpeedPPOTrainer:
                                                                               eos_mask=response_mask)
                 utils.print_rank_0(f"compute_gae_advantage_return successful:{self.global_steps}")
 
-                # 6. 更新策略
-                metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
-                metrics.update(metrics_actor)
-
                 # 5. 更新价值网络
                 metrics_critic = self._update_critic(dialogue_ids, attention_mask, responses, critic_values, returns)
                 metrics.update(metrics_critic)
 
+                # 6. 更新策略
+                metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
+                metrics.update(metrics_actor)
 
                 self.logger.log(data=metrics, step=self.global_steps)
 
@@ -736,6 +735,8 @@ class MegatronDeepSpeedPPOTrainer:
                 else:
                     grad_norm = param.grad.norm().item()
                     print(f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+
+            self.critic_value_head.allreduce_gradients()
 
             self.critic_value_head.step(lr_kwargs={'increment': increment})
 
