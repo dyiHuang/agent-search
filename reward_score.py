@@ -37,7 +37,6 @@ class RewardManager:
             data_item = {key: data[key][i] for key in data}
 
             prompt_ids = data_item['prompts']
-            prompt_ids = prompt_ids.to(torch.cuda.current_device())
 
             prompt_length = prompt_ids.shape[-1]
 
