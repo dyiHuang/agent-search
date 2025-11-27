@@ -611,7 +611,7 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
-        values.to('cpu')
+        values = values.to('cpu')
         # add empty cache after each compute
         torch.cuda.empty_cache()
 
