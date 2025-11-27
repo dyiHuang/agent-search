@@ -3,6 +3,7 @@ import re
 import string
 from typing import Dict
 
+import numpy as np
 import tensordict
 import torch
 
@@ -23,9 +24,10 @@ class RewardManager:
         if 'rm_scores' in data.keys():
             return data['rm_scores']
 
+        print(f"data['responses'].shape{data['responses'].shape}")
         reward_tensor = torch.zeros_like(data['responses'], dtype=torch.float32)
 
-        # all_scores = []
+        all_scores = []
 
         already_print_data_sources = {}
 
@@ -57,7 +59,7 @@ class RewardManager:
                                      format_score=self.format_score)
 
             reward_tensor[i, valid_response_length - 1] = score
-            # all_scores.append(score)
+            all_scores.append(score)
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
@@ -66,12 +68,12 @@ class RewardManager:
                 already_print_data_sources[data_source] += 1
                 print(sequences_str)
 
-        # print(f"[DEBUG] all_scores: {all_scores}")
-        # print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
-        # print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
-        # print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
-        # print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
-        # print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
+        print(f"[DEBUG] all_scores: {all_scores}")
+        print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
+        print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
+        print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
+        print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
+        print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
 
         return reward_tensor
 
