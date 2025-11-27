@@ -594,8 +594,8 @@ class MegatronDeepSpeedPPOTrainer:
             else:
                 values = torch.empty_like(attention_mask, dtype=torch.float32)
 
-            utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {values.shape}")
-            utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {values.device}")
+            utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
+            utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")
             # each tp ranks should contain the same value
             values = values * attention_mask
             values = values[:, -response_length - 1:-1]
@@ -606,7 +606,7 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
-        values.to('cuda')
+        values.to('cpu')
         # add empty cache after each compute
         torch.cuda.empty_cache()
 
