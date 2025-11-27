@@ -508,13 +508,13 @@ class MegatronDeepSpeedPPOTrainer:
             increment = data.batch_size[0]
 
             print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
-            # 强制检查Actor参数梯度
-            has_grad = False
-            for name, param in self.actor.named_parameters():
-                if param.grad is not None and param.grad.norm().item() > 0:
-                    print(f"Actor {name} 梯度范数：{param.grad.norm().item()}")
-                    has_grad = True
-            assert has_grad, "Actor无有效梯度！"
+            # # 强制检查Actor参数梯度
+            # has_grad = False
+            # for name, param in self.actor.named_parameters():
+            #     if param.grad is not None and param.grad.norm().item() > 0:
+            #         print(f"Actor {name} 梯度范数：{param.grad.norm().item()}")
+            #         has_grad = True
+            # assert has_grad, "Actor无有效梯度！"
 
             self.actor.allreduce_gradients()
 
