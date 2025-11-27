@@ -26,6 +26,7 @@ from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig, Cha
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
+from deepspeed.runtime.zero import
 
 
 class MegatronDeepSpeedPPOTrainer:
@@ -548,7 +549,7 @@ class MegatronDeepSpeedPPOTrainer:
                 utils.print_rank_0(f"compute_gae_advantage_return successful:{self.global_steps}")
 
                 # 6. 更新策略
-                metrics_actor = self._update_policy(ref_log_probs, responses, advantages, attention_mask)
+                metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
                 metrics.update(metrics_actor)
 
                 # 5. 更新价值网络
