@@ -336,7 +336,6 @@ class LLMGenerationManager:
             }
             gen_output = self._generate_with_gpu_padding(rollings_active)
 
-            meta_info = gen_output["meta_info"]
             responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
             responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
 
