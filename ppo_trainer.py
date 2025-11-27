@@ -249,9 +249,10 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.critic.step = lambda *args, **kwargs: None
         else:
+
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
-                model=self.critic,
+                model=self.critic.value_head,
                 optimizer=critic_optimizer.optimizer,
                 model_parameters=self.critic.value_head.parameters(),
                 config=deepspeed_dict,
