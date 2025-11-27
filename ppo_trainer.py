@@ -388,6 +388,7 @@ class MegatronDeepSpeedPPOTrainer:
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
                                            dtype=attention_mask.dtype)
+        batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
         mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
 
         print(f"input dtype: {outputs.dtype}, weight dtype: {mask.dtype}")
