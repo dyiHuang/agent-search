@@ -720,7 +720,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             return output, partial(loss_func, data=batch, meta_info={})
 
         # batch should be a list of batches inside micro-batches
-        batch_generator = self.make_batch_generator(batches, vpp_size=len(self.critic_module))
+        batch_generator = self.make_batch_generator(batches, vpp_size=1)
 
         # for flash-attn: (seq_len, batch_size, hidden_size) = (mbs*seq_len, 1, hidden_size)
         if parallel_state.get_pipeline_model_parallel_world_size() > 1:
