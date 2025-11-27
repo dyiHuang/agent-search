@@ -8,7 +8,7 @@ import torch.distributed as dist
 from megatron.core import ModelParallelConfig
 from megatron.core import parallel_state as mpu, tensor_parallel
 
-import utils
+from utils import utils
 
 
 def update_kwargs_with_config(dictionary: Dict, config: ModelParallelConfig):
