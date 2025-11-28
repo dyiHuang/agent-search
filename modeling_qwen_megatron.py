@@ -22,6 +22,7 @@ from transformers import Qwen2Config
 from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
@@ -163,9 +164,10 @@ class Qwen2MegatronModel(MegatronModule):
 
         # Rotary Embedding：仅 PP stage 0 计算（后续 stage 复用或传递）
         # Rotary Embedding (Qwen2.5标准实现)
-        self.rotary_emb = RotaryEmbedding(
-            megatron_config.kv_channels, rotary_percent=1.0, seq_len_interpolation_factor=1.0
-        )
+        # self.rotary_emb = RotaryEmbedding(
+        #     megatron_config.kv_channels, rotary_percent=1.0, seq_len_interpolation_factor=1.0
+        # )
+        self.rotary_emb = Qwen2RotaryEmbedding(config=qwen_config)
 
         # Transformer 层：仅初始化当前 stage 负责的层（核心 PP 拆分）
         self.layers = nn.ModuleList([
@@ -212,10 +214,13 @@ class Qwen2MegatronModel(MegatronModule):
                 # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
                 # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            seq_len = hidden_states.size(0)
 
+            seq_len = hidden_states.size(0)
+            position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-            rotary_pos_emb = self.rotary_emb(seq_len)
+            cos, sin = self.rotary_emb(hidden_states, position_ids)
+            rotary_pos_emb = cos.transpose(1, 0).contiguous(), sin.transpose(1, 0).contiguous()
+
             ori_input_ids.transpose(1, 0)
 
             # 提前处理 only_last_token（减少跨 stage 通信量）
@@ -635,8 +640,13 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
                 # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
             seq_len = hidden_states.size(0)
-            rotary_pos_emb = self.rotary_emb(seq_len)
+            position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+            # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
+            cos, sin = self.rotary_emb(hidden_states, position_ids)
+            rotary_pos_emb = cos.transpose(1, 0).contiguous(), sin.transpose(1, 0).contiguous()
+
             ori_input_ids.transpose(1, 0)
         else:
             # self.hidden_states should be passed by Megatron

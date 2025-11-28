@@ -9,6 +9,8 @@ from megatron.core.transformer.module import Float16Module
 from megatron.core import DistributedDataParallel as LocalDDP
 from torch.nn.parallel import DistributedDataParallel as torchDDP
 
+from utils import utils
+
 
 def _megatron_calc_layer_map(config):
     """Calculate the mapping of global layer_idx to local layer_idx
@@ -346,7 +348,7 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
         layer_map = _megatron_calc_layer_map(config)
 
         for layer in range(config.num_hidden_layers):
-            # print_rank_0(f"loading layer #{layer}...")
+            utils.print_rank_0(f"loading layer #{layer}...")
             layer_name = f"model.layers.{layer}"
             dst_pp_rank, dst_virtual_pp_rank, dst_layer_idx = layer_map[layer]
 
