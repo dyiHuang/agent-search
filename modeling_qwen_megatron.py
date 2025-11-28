@@ -201,12 +201,10 @@ class Qwen2MegatronModel(MegatronModule):
         # 嵌入 + Rotary 编码
         hidden_states = None
         rotary_pos_emb = None
-        ori_input_ids = input_ids
-        # ori_attention_mask = attention_mask
-        # [b, s, h] -> [s, b, h]
-        input_ids = input_ids.transpose(1, 0).contiguous()
-        # attention_mask = attention_mask.transpose(1, 0).contiguous()
         if self.pp_rank == 0:
+            ori_input_ids = input_ids
+            # [b, s, h] -> [s, b, h]
+            input_ids = input_ids.transpose(1, 0).contiguous()
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
             # -------------------------- 修正注意力掩码维度 --------------------------
@@ -218,6 +216,7 @@ class Qwen2MegatronModel(MegatronModule):
 
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
             rotary_pos_emb = self.rotary_emb(seq_len)
+            ori_input_ids.transpose(1, 0)
 
             # 提前处理 only_last_token（减少跨 stage 通信量）
             # if only_last_token:
@@ -242,14 +241,11 @@ class Qwen2MegatronModel(MegatronModule):
             #     rotary_pos_emb = rotary_pos_emb[:, -1:] if isinstance(rotary_pos_emb, torch.Tensor) else None
 
         # 输出
-        logits = None
         if self.pp_rank == self.pp_size - 1:
             hidden_states = self.final_norm(hidden_states)
             logits = self.lm_head(hidden_states)
             # [s, b, h] -> [b, s, h]
             logits = logits[0].transpose(1, 0).contiguous()
-            ori_input_ids.transpose(1, 0)
-            # ori_attention_mask.transpose(1, 0)
 
             # 若仅需最后一个token的logits，直接返回
             if only_last_token:
@@ -257,10 +253,6 @@ class Qwen2MegatronModel(MegatronModule):
 
             logits = logits.float()
             return logits
-        # [s, b, h] -> [b, s, h]
-        hidden_states = hidden_states.transpose(1, 0).contiguous()
-        ori_input_ids.transpose(1, 0)
-        # ori_attention_mask.transpose(1, 0)
         return hidden_states
 
     @torch.no_grad()  # 生成过程禁用梯度计算
@@ -380,8 +372,6 @@ class Qwen2MegatronModel(MegatronModule):
             if finished_mask.all():
                 break
 
-        # 7. 恢复模型训练模式（若之前是训练模式）
-        self.train(mode=self.training)
         return generated_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
@@ -634,10 +624,10 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         # -------------------------- 1. 第一个 PP stage：执行嵌入层 + Rotary 编码 --------------------------
         # 嵌入 + Rotary 编码
         rotary_pos_emb = None
-        ori_input_ids = input_ids
-        # [b, s, h] -> [s, b, h]
-        input_ids = input_ids.transpose(1, 0).contiguous()
         if self.pp_rank == 0:
+            ori_input_ids = input_ids
+            # [b, s, h] -> [s, b, h]
+            input_ids = input_ids.transpose(1, 0).contiguous()
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
             # -------------------------- 修正注意力掩码维度 --------------------------
@@ -647,6 +637,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
             seq_len = hidden_states.size(0)
             rotary_pos_emb = self.rotary_emb(seq_len)
+            ori_input_ids.transpose(1, 0)
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
@@ -670,7 +661,6 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
             # [s, b, h] -> [b, s, h]
             value_preds = value_preds.transpose(1, 0).contiguous()
-            ori_input_ids.transpose(1, 0)
 
             # 5. 仅保留最后一个token的价值（PPO核心用法）
             if only_last_token:
