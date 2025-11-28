@@ -13,7 +13,7 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits
 from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, model_parallel_cuda_manual_seed
 
 import core_algos
-from utils import utils, parallel_state_patch, rotary_pos_emb_patch
+from utils import utils, parallel_state_patch
 from modeling_qwen_megatron import build_qwen2_megatron_model
 from omegaconf import OmegaConf, open_dict
 import reward_score
@@ -29,6 +29,8 @@ from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
 
 from torch.utils.tensorboard import SummaryWriter
+
+from utils import rotary_pos_emb_patch
 
 # 初始化 Writer（指定日志目录）
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
@@ -52,6 +54,8 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
+
+        rotary_pos_emb_patch.apply_patch()
 
         # 2. 配置 LoRa
         self.lora_config = LoraConfig(
@@ -88,8 +92,6 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
-
-        rotary_pos_emb_patch.apply_patch()
 
     def _init_logger(self):
         from utils.tracking import Tracking

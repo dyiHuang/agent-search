@@ -10,6 +10,7 @@ from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 def apply_patch():
     if hasattr(rope_utils, 'apply_rotary_pos_emb'):
         rope_utils.apply_rotary_pos_emb = apply_rotary_pos_emb_new
+        print("WARNING: Monkey-patched 'mpu.rope_utils.apply_rotary_pos_emb' using 'apply_rotary_pos_emb_new'.")
 
 
 def apply_rotary_pos_emb_new(
