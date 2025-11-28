@@ -2,6 +2,7 @@ import os
 from typing import Dict
 
 import deepspeed
+import numpy as np
 import torch
 from megatron.core import parallel_state
 from transformers import AutoTokenizer
@@ -40,8 +41,11 @@ class MegatronDeepSpeedPPOTrainer:
         self.config = config
         self._init_logger()
 
-        self.tokenizer = AutoTokenizer.from_pretrained(config.qwen_model_path)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer = AutoTokenizer.from_pretrained(config.qwen_model_path,
+                                                       trust_remote_code=True,
+                                                       )
+        # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        # self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # 加载数据集（分布式采样）
         self._create_dataloader()
@@ -134,7 +138,8 @@ class MegatronDeepSpeedPPOTrainer:
             parallel_state.initialize_model_parallel(
                 tensor_model_parallel_size=tp_size,
                 pipeline_model_parallel_size=pp_size,
-                virtual_pipeline_model_parallel_size=None  # RL/微调场景禁用虚拟流水线
+                virtual_pipeline_model_parallel_size=None,  # RL/微调场景禁用虚拟流水线
+                order='tp-pp-dp'    # 2-tp 2-pp for megatron 2-dp for deepspeed
             )
 
         # 验证并行组（确保与 DeepSpeed 进程组兼容）
@@ -143,9 +148,9 @@ class MegatronDeepSpeedPPOTrainer:
         pp_group = parallel_state.get_pipeline_model_parallel_group()
         if is_main_process:
             print(
-                f"megatron-core parallel group：TP group size={torch.distributed.get_world_size(tp_group)}, "
-                f"PP group size={torch.distributed.get_world_size(pp_group)}, "
-                f"DP group size={torch.distributed.get_world_size(dp_group)}")
+                f"megatron-core parallel group：TP group={tp_group} size={torch.distributed.get_world_size(tp_group)}, "
+                f"PP group={pp_group} size={torch.distributed.get_world_size(pp_group)}, "
+                f"DP group={dp_group} size={torch.distributed.get_world_size(dp_group)}")
 
         # # -------------------------- 步骤 4：混合精度统一配置 --------------------------
         # # 与 DeepSpeed 配置保持一致（bf16/fp16/fp32）
@@ -371,6 +376,10 @@ class MegatronDeepSpeedPPOTrainer:
         attention_mask = batch["attention_mask"].to('cuda')
         prompt_len = input_ids.shape[1]
 
+        # 解码第一条输入，确认无乱码
+        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
+        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
+
         # 生成 response（actor模型）
         with torch.no_grad():
             if not self.config.do_search:
@@ -383,8 +392,8 @@ class MegatronDeepSpeedPPOTrainer:
                     attention_mask=attention_mask,
                     top_k=self.config.rollout.top_k,
                 )
-                utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
-                utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
+                # utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
+                # utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
                 # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
                 batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
                 response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
@@ -614,13 +623,13 @@ class MegatronDeepSpeedPPOTrainer:
 
     def write_ds_scalars(self, metrics):
         if torch.distributed.get_rank() == 0:
-            writer.add_scalar("train/actor/entropy_loss", sum(metrics['actor/entropy_loss']), global_step=self.global_steps)
-            writer.add_scalar("train/actor/pg_loss", sum(metrics['actor/pg_loss']), global_step=self.global_steps)
-            writer.add_scalar("train/actor/pg_clipfrac", sum(metrics['actor/pg_clipfrac']), global_step=self.global_steps)
-            writer.add_scalar("train/actor/ppo_kl", sum(metrics['actor/ppo_kl']), global_step=self.global_steps)
-            writer.add_scalar("train/critic/vf_loss", sum(metrics['critic/vf_loss']), global_step=self.global_steps)
-            writer.add_scalar("train/critic/vf_clipfrac", sum(metrics['critic/vf_clipfrac']), global_step=self.global_steps)
-            writer.add_scalar("train/critic/vpred_mean", sum(metrics['critic/vpred_mean']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/entropy_loss", np.mean(metrics['actor/entropy_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/ppo_kl", np.mean(metrics['actor/ppo_kl']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_loss", np.mean(metrics['critic/vf_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']), global_step=self.global_steps)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
@@ -653,8 +662,8 @@ class MegatronDeepSpeedPPOTrainer:
             else:
                 values = torch.empty_like(attention_mask, dtype=torch.float32)
 
-            utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
-            utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")
+            # utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
+            # utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")
             # each tp ranks should contain the same value
             values = values * attention_mask
             values = values[:, -response_length - 1:-1]
