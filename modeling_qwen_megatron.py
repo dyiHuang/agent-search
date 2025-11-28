@@ -219,7 +219,8 @@ class Qwen2MegatronModel(MegatronModule):
             position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
             cos, sin = self.rotary_emb(hidden_states, position_ids)
-            rotary_pos_emb = cos.transpose(1, 0).contiguous(), sin.transpose(1, 0).contiguous()
+            cos_sin = torch.cat([cos, sin], dim=-1)
+            rotary_pos_emb = cos_sin, cos_sin
 
             ori_input_ids.transpose(1, 0)
 
