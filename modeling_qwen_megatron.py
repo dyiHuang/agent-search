@@ -772,10 +772,12 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         return losses_reduced
 
 
-def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \
+def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \
         -> Union[Qwen2MegatronModel, Qwen2MegatronCritic]:
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
+
+    utils.print_rank_0(f"qwen2 config: {qwen_config}")
 
     params_dtype = torch.get_default_dtype()
     if config.deepspeed.bf16.enabled:
@@ -802,7 +804,12 @@ def build_qwen2_megatron_model(config, qwen_model_path: str, lora_config: LoraCo
     )
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
-    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path)
+    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype)
+    utils.print_rank_0(hf_model)
+
+    response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt")).sequences)
+    utils.print_rank_0(f"qwen2 response: {response}")
+
     if not is_critic:
         model = Qwen2MegatronModel(config, qwen_config, megatron_config)
         model.cuda()
