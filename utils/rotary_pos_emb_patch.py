@@ -25,6 +25,10 @@ def apply_rotary_pos_emb_new(
     print("freqs shape:", freqs.shape)  # 查看Megatron传入的freqs形状
     print("t (query) shape:", t.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
     cos_restored, sin_restored = torch.split(freqs, freqs.shape[-1] // 2, dim=-1)
+    # 2. 扩展RoPE维度到匹配query的head_dim=128（每对复数维度共享相同的cos/sin）
+    # 方法：将64维的cos/sin重复一次，得到128维（对应128维head_dim的64对旋转）
+    cos_restored = cos_restored.repeat_interleave(2, dim=-1)  # [2161,1,128]
+    sin_restored = sin_restored.repeat_interleave(2, dim=-1)  # [2161,1,128]
     print("cos_restored shape:", cos_restored.shape)  # 查看Megatron传入的freqs形状
     print("sin_restored shape:", sin_restored.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
     r1, r2 = apply_rotary_pos_emb(t, t, cos_restored, sin_restored, unsqueeze_dim=2)
