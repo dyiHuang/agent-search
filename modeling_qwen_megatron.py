@@ -807,7 +807,10 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype)
     utils.print_rank_0(hf_model)
 
-    response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt")).sequences)
+    response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt"),
+                                                  max_length=512,
+                                                  eos_token_id=151643,
+                                                  pad_token_id=0,).sequences)
     utils.print_rank_0(f"qwen2 response: {response}")
 
     if not is_critic:
