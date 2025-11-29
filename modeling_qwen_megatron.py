@@ -219,7 +219,13 @@ class Qwen2MegatronModel(MegatronModule):
             position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
             cos, sin = self.rotary_emb(hidden_states, position_ids)
+            print("cos shape:", cos.shape)  # 查看Megatron传入的freqs形状
+            print("sin shape:", sin.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
+            print("hidden_states shape:", hidden_states.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
+            print("position_ids shape:", position_ids.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
             cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+            print("cos_sin shape:", cos_sin.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
+
             rotary_pos_emb = cos_sin, cos_sin
 
             ori_input_ids.transpose(1, 0)

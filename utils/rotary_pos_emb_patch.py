@@ -22,6 +22,10 @@ def apply_rotary_pos_emb_new(
         cp_group: torch.distributed.ProcessGroup = None,
 ):
     # 按最后一维拆分为dim长度的两部分，返回元组(cos_restored, sin_restored)
+    print("freqs shape:", freqs.shape)  # 查看Megatron传入的freqs形状
+    print("t (query) shape:", t.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
     cos_restored, sin_restored = torch.split(freqs, freqs.shape[-1] // 2, dim=-1)
+    print("cos_restored shape:", cos_restored.shape)  # 查看Megatron传入的freqs形状
+    print("sin_restored shape:", sin_restored.shape)  # 查看query的形状（通常是[batch, seq_len, num_heads, head_dim]）
     r1, r2 = apply_rotary_pos_emb(t, t, cos_restored, sin_restored, unsqueeze_dim=2)
     return r1
