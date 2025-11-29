@@ -804,13 +804,16 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     )
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
-    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype)
+    hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype).cuda()
     utils.print_rank_0(hf_model)
 
-    response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt"),
+    response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt").to(hf_model.device),
                                                   max_length=512,
+                                                  max_new_tokens=100,
                                                   eos_token_id=151643,
-                                                  pad_token_id=0,).sequences)
+                                                  use_cache=True,
+                                                  pad_token_id=0,)[0],  # 若batch_size>1，需遍历所有样本
+                            skip_special_tokens=True)
     utils.print_rank_0(f"qwen2 response: {response}")
 
     if not is_critic:
