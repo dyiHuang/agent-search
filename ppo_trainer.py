@@ -1,5 +1,7 @@
 import os
 from typing import Dict
+from utils import rotary_pos_emb_patch
+rotary_pos_emb_patch.apply_patch()
 
 import deepspeed
 import numpy as np
@@ -30,8 +32,6 @@ from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfi
 
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import rotary_pos_emb_patch
-
 # 初始化 Writer（指定日志目录）
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
 
@@ -54,8 +54,6 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
-
-        rotary_pos_emb_patch.apply_patch()
 
         # 2. 配置 LoRa
         self.lora_config = LoraConfig(
