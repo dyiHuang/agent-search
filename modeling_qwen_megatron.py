@@ -23,6 +23,7 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
 from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding
+from transformers.activations import ACT2FN
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
@@ -59,14 +60,13 @@ class Qwen2MegatronAttention(SelfAttention):
 class Qwen2MegatronMLP(MLP):
     def __init__(self, config: TransformerConfig):
         self.config = config
-        self.config.gated_linear_unit = True
         mlp = MLPSubmodules(
             linear_fc1=tensor_parallel.ColumnParallelLinear,  # Qwen2.5 gate_proj, up_proj
             linear_fc2=tensor_parallel.RowParallelLinear,  # Qwen2.5 down_proj
         )
         super().__init__(config, submodules=mlp)
-        # Qwen2.5 用SwiGLU， 替换 Megatron 默认 GELU
-        self.activation_func = nn.SiLU  # SwiLU = SilU + 点积
+        # # Qwen2.5 用SwiGLU， 替换 Megatron 默认 GELU
+        # self.activation_func = nn.SiLU  # SwiLU = SilU + 点积
 
 
 @use_kernel_forward_from_hub("RMSNorm")
@@ -787,11 +787,11 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
 
     # 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
     megatron_config = TransformerConfig(
-        hidden_size=qwen_config.hidden_size,
+        hidden_size=qwen_config.hidden_size,  # 2048
         num_layers=qwen_config.num_hidden_layers,
-        num_attention_heads=qwen_config.num_attention_heads,
-        num_query_groups=qwen_config.num_key_value_heads,
-        kv_channels=qwen_config.hidden_size // qwen_config.num_attention_heads,
+        num_attention_heads=qwen_config.num_attention_heads,  # 64
+        num_query_groups=qwen_config.num_key_value_heads,  # 8
+        kv_channels=qwen_config.hidden_size // qwen_config.num_attention_heads,  # 32
         ffn_hidden_size=qwen_config.intermediate_size,
         layernorm_epsilon=qwen_config.rms_norm_eps,
         init_method=torch.nn.init.xavier_uniform_,
@@ -801,7 +801,10 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         pipeline_dtype=params_dtype,
         bf16=config.deepspeed.bf16.enabled,
         fp16=config.deepspeed.fp16.enabled,
+        activation_func=ACT2FN[qwen_config.hidden_act],
+        gated_linear_unit=True
     )
+    utils.print_rank_0(f"megatron TransformerConfig: {megatron_config}")
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
     hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype).cuda()
