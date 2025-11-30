@@ -720,6 +720,10 @@ class Qwen2MegatronModel(MegatronModule):
         self.debug_residual_connections(input_ids)
         self.debug_lm_head_output(input_ids)
 
+        # 运行这些调试来确认问题
+        self.debug_mlp_implementation(input_ids)
+        self.check_mlp_weights(layer_idx=2)
+
         utils.print_rank_0("✅ 全面调试完成")
 
     def debug_attention_mechanism(self, input_ids):
@@ -868,6 +872,113 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0(f"最终logits: 形状={logits.shape}, mean={logits.mean():.6f}, std={logits.std():.6f}")
 
         return logits
+
+    def debug_mlp_implementation(self, input_ids):
+        """详细调试MLP实现"""
+        utils.print_rank_0("=== MLP实现详细调试 ===")
+
+        hidden_states = self.embedding(input_ids.transpose(0, 1))
+        attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+        # 检查Rotary Embedding
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+        rotary_pos_emb = cos_sin, cos_sin
+
+        # 只运行到第2层
+        for layer_idx in range(3):
+            layer = self.layers[layer_idx]
+
+            # 运行到MLP输入
+            attention_output = layer.self_attention(hidden_states, attention_mask, rotary_pos_emb)
+            if isinstance(attention_output, tuple):
+                attention_output = attention_output[0]
+            residual1 = hidden_states + attention_output
+            mlp_input = layer.pre_mlp_layernorm(residual1)
+
+            if layer_idx == 2:  # 重点调试第2层
+                utils.print_rank_0(f"\n--- 第{layer_idx}层MLP详细调试 ---")
+                utils.print_rank_0(f"MLP输入: mean={mlp_input.mean():.6f}, std={mlp_input.std():.6f}")
+
+                mlp = layer.mlp
+                # 检查MLP各组件
+                utils.print_rank_0(f"MLP类型: {type(mlp)}")
+                utils.print_rank_0(f"MLP配置: gated_linear_unit={mlp.gated_linear_unit}")
+
+                # 逐步执行MLP前向传播
+                # 1. linear_fc1
+                fc1_output = mlp.linear_fc1(mlp_input)
+                utils.print_rank_0(
+                    f"linear_fc1输出: shape={fc1_output.shape}, mean={fc1_output.mean():.6f}, std={fc1_output.std():.6f}")
+
+                # 2. 检查是否分为gate和up
+                if mlp.gated_linear_unit:
+                    gate, up = torch.chunk(fc1_output, 2, dim=-1)
+                    utils.print_rank_0(f"gate部分: shape={gate.shape}, mean={gate.mean():.6f}, std={gate.std():.6f}")
+                    utils.print_rank_0(f"up部分: shape={up.shape}, mean={up.mean():.6f}, std={up.std():.6f}")
+
+                    # 3. 激活函数
+                    activated_gate = torch.nn.functional.silu(gate)
+                    utils.print_rank_0(f"SiLU(gate): mean={activated_gate.mean():.6f}, std={activated_gate.std():.6f}")
+
+                    # 4. 门控乘法
+                    intermediate = activated_gate * up
+                    utils.print_rank_0(f"gate * up: mean={intermediate.mean():.6f}, std={intermediate.std():.6f}")
+                else:
+                    intermediate = mlp.activation_func(fc1_output)
+                    utils.print_rank_0(f"激活函数输出: mean={intermediate.mean():.6f}, std={intermediate.std():.6f}")
+
+                # 5. linear_fc2
+                fc2_output = mlp.linear_fc2(intermediate)
+                utils.print_rank_0(f"linear_fc2输出: mean={fc2_output.mean():.6f}, std={fc2_output.std():.6f}")
+
+                # 6. dropout (如果有)
+                if hasattr(mlp, 'dropout') and mlp.dropout.p > 0:
+                    final_output = mlp.dropout(fc2_output)
+                    utils.print_rank_0(f"Dropout后: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
+                else:
+                    final_output = fc2_output
+
+                utils.print_rank_0(f"MLP最终输出: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
+
+            # 完成这一层
+            layer_output = layer(hidden_states)
+            if isinstance(layer_output, tuple):
+                hidden_states = layer_output[0]
+            else:
+                hidden_states = layer_output
+
+    def check_mlp_weights(self, layer_idx=2):
+        """检查MLP层权重"""
+        utils.print_rank_0(f"=== 第{layer_idx}层MLP权重检查 ===")
+
+        layer = self.layers[layer_idx]
+        mlp = layer.mlp
+
+        # 检查linear_fc1权重
+        fc1_weight = mlp.linear_fc1.weight
+        fc1_bias = mlp.linear_fc1.bias if hasattr(mlp.linear_fc1, 'bias') else None
+
+        utils.print_rank_0(f"linear_fc1权重: shape={fc1_weight.shape}")
+        utils.print_rank_0(f"linear_fc1权重 - mean: {fc1_weight.mean().item():.6f}, std: {fc1_weight.std().item():.6f}")
+        utils.print_rank_0(f"linear_fc1权重 - 范围: [{fc1_weight.min().item():.6f}, {fc1_weight.max().item():.6f}]")
+
+        if fc1_bias is not None:
+            utils.print_rank_0(f"linear_fc1偏置 - mean: {fc1_bias.mean().item():.6f}, std: {fc1_bias.std().item():.6f}")
+
+        # 检查linear_fc2权重
+        fc2_weight = mlp.linear_fc2.weight
+        fc2_bias = mlp.linear_fc2.bias if hasattr(mlp.linear_fc2, 'bias') else None
+
+        utils.print_rank_0(f"linear_fc2权重: shape={fc2_weight.shape}")
+        utils.print_rank_0(f"linear_fc2权重 - mean: {fc2_weight.mean().item():.6f}, std: {fc2_weight.std().item():.6f}")
+        utils.print_rank_0(f"linear_fc2权重 - 范围: [{fc2_weight.min().item():.6f}, {fc2_weight.max().item():.6f}]")
+
+        if fc2_bias is not None:
+            utils.print_rank_0(f"linear_fc2偏置 - mean: {fc2_bias.mean().item():.6f}, std: {fc2_bias.std().item():.6f}")
 
 
 class Qwen2MegatronCritic(Qwen2MegatronModel):
