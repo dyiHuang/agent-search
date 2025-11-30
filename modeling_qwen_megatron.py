@@ -869,10 +869,11 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
                                        model.layers[i].pre_mlp_layernorm.weight)
         utils.print_rank_0(f"model.layers[{i}].pre_mlp_layernorm.weight：{diffs}")
 
-    diffs = utils.find_tensor_diff(hf_model.norm.weight, model.final_norm.weight)
+    diffs = utils.find_tensor_diff(hf_model.model.norm.weight, model.final_norm.weight)
     utils.print_rank_0(f"model.final_norm.weight差异位置：{diffs}")
-    diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
-    utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
+    if not is_critic:
+        diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
+        utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
     return model
 
 
