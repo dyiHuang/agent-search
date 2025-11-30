@@ -78,6 +78,7 @@ class MegatronDeepSpeedPPOTrainer:
             param.requires_grad = True
         self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path)
         self.reference.eval()
+        utils.print_rank_0(self.reference)
         for param in self.reference.parameters():
             param.requires_grad = False
             # param.data = param.data.to(torch.float32)
