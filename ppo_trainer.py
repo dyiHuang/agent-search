@@ -79,6 +79,10 @@ class MegatronDeepSpeedPPOTrainer:
         self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         utils.print_rank_0(self.reference)
+        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.weight)
+        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.bias)
+        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.weight.shape)
+        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.bias.shape)
         for param in self.reference.parameters():
             param.requires_grad = False
             # param.data = param.data.to(torch.float32)
