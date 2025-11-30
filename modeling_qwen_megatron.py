@@ -73,13 +73,12 @@ class Qwen2MegatronMLP(MLP):
 
 @use_kernel_forward_from_hub("RMSNorm")
 class Qwen2RMSNorm(nn.Module):
-    def __init__(self, config, hidden_size, eps: float = 1e-6) -> None:
+    def __init__(self, config: TransformerConfig, hidden_size, eps: float = 1e-6) -> None:
         """
         Qwen2RMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        params_dtype = get_params_dtype(config)
-        self.weight = nn.Parameter(torch.ones(hidden_size, dtype=params_dtype))
+        self.weight = nn.Parameter(torch.ones(hidden_size, dtype=config.params_dtype))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -183,7 +182,7 @@ class Qwen2MegatronModel(MegatronModule):
         self.lm_head = None
         utils.print_rank_0(f"self.pp_rank: {self.pp_rank}, self.pp_size: {self.pp_size}")
         if self.pp_rank == self.pp_size - 1:
-            self.final_norm = Qwen2RMSNorm(g_config, self.hidden_size, eps=qwen_config.rms_norm_eps)
+            self.final_norm = Qwen2RMSNorm(megatron_config, self.hidden_size, eps=qwen_config.rms_norm_eps)
             self.lm_head = tensor_parallel.ColumnParallelLinear(
                 self.hidden_size, self.vocab_size, config=megatron_config, bias=False,
                 init_method=megatron_config.init_method
