@@ -41,6 +41,7 @@ class Qwen2MegatronAttention(SelfAttention):
                  cp_comm_type: str = None,
                  pg_collection: ProcessGroupCollection = None
                  ):
+        config.add_qkv_bias = True
         super().__init__(
             config,
             submodules=SelfAttentionSubmodules(
