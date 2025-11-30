@@ -775,6 +775,16 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0("=== 残差连接调试 ===")
 
         hidden_states = self.embedding(input_ids.transpose(0, 1))
+        attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+        # 检查Rotary Embedding
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+
+        rotary_pos_emb = cos_sin, cos_sin
 
         for layer_idx in range(3):
             utils.print_rank_0(f"\n--- 第{layer_idx}层残差连接 ---")
@@ -789,7 +799,7 @@ class Qwen2MegatronModel(MegatronModule):
             utils.print_rank_0(f"输入层归一化: mean={norm_input.mean():.6f}, std={norm_input.std():.6f}")
 
             # 注意力输出
-            attention_output = layer.self_attention(norm_input)
+            attention_output = layer.self_attention(norm_input, attention_mask, rotary_pos_emb)
             if isinstance(attention_output, tuple):
                 attention_output = attention_output[0]
 
@@ -816,9 +826,19 @@ class Qwen2MegatronModel(MegatronModule):
 
         # 完整前向传播到最后一层
         hidden_states = self.embedding(input_ids.transpose(0, 1))
+        attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+        # 检查Rotary Embedding
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+
+        rotary_pos_emb = cos_sin, cos_sin
 
         for layer in self.layers:
-            layer_output = layer(hidden_states)
+            layer_output = layer(hidden_states, attention_mask, rotary_pos_emb)
             if isinstance(layer_output, tuple):
                 hidden_states = layer_output[0]
             else:
