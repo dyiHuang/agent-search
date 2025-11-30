@@ -212,19 +212,6 @@ class Qwen2MegatronModel(MegatronModule):
             input_ids = input_ids.transpose(1, 0).contiguous()
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
-            # -------------------------- 修正注意力掩码维度 --------------------------
-            if attention_mask is not None:
-                # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
-                # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
-                attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-
-            seq_len = hidden_states.size(0)
-            position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
-            # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-            cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
-            cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-
-            rotary_pos_emb = cos_sin, cos_sin
 
             ori_input_ids.transpose(1, 0)
 
@@ -235,6 +222,20 @@ class Qwen2MegatronModel(MegatronModule):
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
+
+        # -------------------------- 修正注意力掩码维度 --------------------------
+        if attention_mask is not None:
+            # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
+            # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
+        cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+
+        rotary_pos_emb = cos_sin, cos_sin
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
@@ -546,6 +547,167 @@ class Qwen2MegatronModel(MegatronModule):
         logits = torch.where(logits >= min_top_k_value, logits, torch.tensor(-float("inf"), device=logits.device))
         return logits
 
+    def detailed_forward_debug(self, input_ids, attention_mask=None):
+        """详细的前向传播调试"""
+        utils.print_rank_0("=== 详细前向传播调试开始 ===")
+
+        # 原始输入
+        utils.print_rank_0(f"输入形状: {input_ids.shape}")
+        utils.print_rank_0(f"输入token: {input_ids[0].cpu().numpy()}")
+
+        # 嵌入层
+        hidden_states = self.embedding(input_ids.transpose(0, 1))
+        utils.print_rank_0(
+            f"嵌入层输出 - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+
+        # 检查Rotary Embedding
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+
+        rotary_pos_emb = cos_sin, cos_sin
+
+        # 逐层检查Transformer
+        for layer_idx, layer in enumerate(self.layers):
+            utils.print_rank_0(f"\n--- 第{layer_idx}层 ---")
+
+            # 输入统计
+            input_mean = hidden_states.mean().item()
+            input_std = hidden_states.std().item()
+            utils.print_rank_0(f"输入 - 均值: {input_mean:.6f}, 标准差: {input_std:.6f}")
+
+            # 层前向传播
+            layer_output = layer(hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb)
+
+            # 处理输出（可能是tuple）
+            if isinstance(layer_output, tuple):
+                utils.print_rank_0(f"层输出是tuple，长度: {len(layer_output)}")
+                hidden_states = layer_output[0]
+                if len(layer_output) > 1:
+                    utils.print_rank_0(
+                        f"额外输出: {[x.shape if hasattr(x, 'shape') else type(x) for x in layer_output[1:]]}")
+            else:
+                hidden_states = layer_output
+
+            # 输出统计
+            output_mean = hidden_states.mean().item()
+            output_std = hidden_states.std().item()
+            utils.print_rank_0(f"输出 - 均值: {output_mean:.6f}, 标准差: {output_std:.6f}")
+
+            # 检查变化
+            change = abs(output_mean - input_mean)
+            utils.print_rank_0(f"均值变化: {change:.6f}")
+
+            # 检查NaN/Inf
+            if torch.isnan(hidden_states).any():
+                utils.print_rank_0(f"⚠️  第{layer_idx}层输出包含NaN!")
+            if torch.isinf(hidden_states).any():
+                utils.print_rank_0(f"⚠️  第{layer_idx}层输出包含Inf!")
+
+            # 只检查前3层，避免输出过多
+            if layer_idx >= 2:
+                utils.print_rank_0("... (跳过后续层详细输出)")
+                break
+
+        # 最终层
+        if self.final_norm:
+            hidden_states = self.final_norm(hidden_states)
+            utils.print_rank_0(f"最终归一化 - 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+
+        # LM Head
+        logits = self.lm_head(hidden_states).transpose(0, 1)
+        utils.print_rank_0(f"最终logits - 形状: {logits.shape}, 均值: {logits.mean():.6f}, 标准差: {logits.std():.6f}")
+
+        # 检查logits的合理性
+        top5_values, top5_indices = torch.topk(logits[0, -1], 5)
+        utils.print_rank_0(f"最后一个token的top-5 logits:")
+        for i, (value, idx) in enumerate(zip(top5_values, top5_indices)):
+            utils.print_rank_0(f"  {i + 1}. token {idx.item()}: {value.item():.3f}")
+
+        return logits
+
+    def debug_generation_sampling(self, input_ids, num_steps=3):
+        """调试生成过程中的采样"""
+        utils.print_rank_0("=== 生成过程采样调试 ===")
+
+        current_input = input_ids
+        attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+
+        for step in range(num_steps):
+            utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
+
+            # 前向传播获取logits
+            with torch.no_grad():
+                logits = self.forward(
+                    input_ids=current_input,
+                    attention_mask=attention_mask,
+                    only_last_token=True  # 只获取最后一个token的logits
+                )
+
+            utils.print_rank_0(f"Logits形状: {logits.shape}")
+            utils.print_rank_0(f"Logits范围: [{logits.min():.3f}, {logits.max():.3f}]")
+
+            # 检查logits的分布
+            last_token_logits = logits[:, -1]  # [batch_size, vocab_size]
+            probs = torch.softmax(last_token_logits, dim=-1)
+
+            # 采样前的概率分布
+            top_probs, top_indices = torch.topk(probs[0], 10)
+            utils.print_rank_0("Top-10 概率分布:")
+            for i, (prob, idx) in enumerate(zip(top_probs, top_indices)):
+                token_str = self.tokenizer.decode([idx.item()]) if hasattr(self, 'tokenizer') else str(idx.item())
+                utils.print_rank_0(f"  {i + 1}. [{idx.item():6d}] '{token_str}': {prob.item():.4f}")
+
+            # 采样
+            next_token = torch.multinomial(probs, num_samples=1)
+            utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
+
+            # 更新输入
+            current_input = torch.cat([current_input, next_token], dim=1)
+            attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
+
+            utils.print_rank_0(f"更新后输入长度: {current_input.shape[1]}")
+
+        return current_input
+
+    def run_comprehensive_debug(self):
+        """运行全面的调试"""
+        utils.print_rank_0("🚀 开始全面调试...")
+
+        # 使用固定的简单输入
+        test_prompt = "Hello"
+        if hasattr(self, 'tokenizer'):
+            input_ids = self.tokenizer.encode(test_prompt, return_tensors="pt").to('cuda')
+        else:
+            # 如果没有tokenizer，使用简单数字
+            input_ids = torch.tensor([[1, 2, 3]], device='cuda')
+
+        utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+
+        # 1. 详细前向传播
+        utils.print_rank_0("\n" + "=" * 50)
+        utils.print_rank_0("1. 详细前向传播检查")
+        utils.print_rank_0("=" * 50)
+        logits = self.detailed_forward_debug(input_ids)
+
+        # 2. 生成过程采样检查
+        utils.print_rank_0("\n" + "=" * 50)
+        utils.print_rank_0("2. 生成过程采样检查")
+        utils.print_rank_0("=" * 50)
+        generated = self.debug_generation_sampling(input_ids)
+
+        # 3. 验证最终输出
+        if hasattr(self, 'tokenizer'):
+            generated_text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
+            utils.print_rank_0(f"\n最终生成文本: '{generated_text}'")
+        else:
+            utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
+
+        utils.print_rank_0("✅ 全面调试完成")
+
 
 class Qwen2MegatronCritic(Qwen2MegatronModel):
     """PPO Critic模型（价值网络），兼容Megatron TP并行"""
@@ -640,24 +802,25 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             input_ids = input_ids.transpose(1, 0).contiguous()
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
-            # -------------------------- 修正注意力掩码维度 --------------------------
-            if attention_mask is not None:
-                # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
-                # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
-                attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-
-            seq_len = hidden_states.size(0)
-            position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
-            # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-            cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
-            cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-
-            rotary_pos_emb = cos_sin, cos_sin
 
             ori_input_ids.transpose(1, 0)
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
+
+        # -------------------------- 修正注意力掩码维度 --------------------------
+        if attention_mask is not None:
+            # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
+            # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
+        seq_len = hidden_states.size(0)
+        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
+        cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
+        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
+
+        rotary_pos_emb = cos_sin, cos_sin
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         # 2. Transformer层传播（完整序列，不提前截断，保证特征完整性）
