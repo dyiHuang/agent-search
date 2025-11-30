@@ -906,7 +906,7 @@ class Qwen2MegatronModel(MegatronModule):
                 mlp = layer.mlp
                 # 检查MLP各组件
                 utils.print_rank_0(f"MLP类型: {type(mlp)}")
-                utils.print_rank_0(f"MLP配置: gated_linear_unit={mlp.gated_linear_unit}")
+                utils.print_rank_0(f"MLP配置: gated_linear_unit={mlp.config.gated_linear_unit}")
 
                 # 逐步执行MLP前向传播
                 # 1. linear_fc1
@@ -915,7 +915,7 @@ class Qwen2MegatronModel(MegatronModule):
                     f"linear_fc1输出: shape={fc1_output.shape}, mean={fc1_output.mean():.6f}, std={fc1_output.std():.6f}")
 
                 # 2. 检查是否分为gate和up
-                if mlp.gated_linear_unit:
+                if mlp.config.gated_linear_unit:
                     gate, up = torch.chunk(fc1_output, 2, dim=-1)
                     utils.print_rank_0(f"gate部分: shape={gate.shape}, mean={gate.mean():.6f}, std={gate.std():.6f}")
                     utils.print_rank_0(f"up部分: shape={up.shape}, mean={up.mean():.6f}, std={up.std():.6f}")
