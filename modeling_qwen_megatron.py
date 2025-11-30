@@ -615,6 +615,14 @@ class Qwen2MegatronModel(MegatronModule):
         # 最终层
         if self.final_norm:
             hidden_states = self.final_norm(hidden_states)
+            if isinstance(hidden_states, tuple):
+                utils.print_rank_0(f"final_norm输出是tuple，长度: {len(hidden_states)}")
+                hidden_states = hidden_states[0]
+                if len(hidden_states) > 1:
+                    utils.print_rank_0(
+                        f"final_norm额外输出: {[x.shape if hasattr(x, 'shape') else type(x) for x in hidden_states[1:]]}")
+            else:
+                hidden_states = hidden_states
             utils.print_rank_0(f"最终归一化 - 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
 
         # LM Head
