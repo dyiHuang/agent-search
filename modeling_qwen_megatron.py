@@ -789,9 +789,9 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     megatron_config = TransformerConfig(
         hidden_size=qwen_config.hidden_size,  # 2048
         num_layers=qwen_config.num_hidden_layers,
-        num_attention_heads=qwen_config.num_attention_heads,  # 64
-        num_query_groups=qwen_config.num_key_value_heads,  # 8
-        kv_channels=qwen_config.hidden_size // qwen_config.num_attention_heads,  # 32
+        num_attention_heads=qwen_config.num_attention_heads,  # 16
+        num_query_groups=qwen_config.num_key_value_heads,  # 2
+        kv_channels=qwen_config.hidden_size // qwen_config.num_attention_heads,  # 128
         ffn_hidden_size=qwen_config.intermediate_size,
         layernorm_epsilon=qwen_config.rms_norm_eps,
         init_method=torch.nn.init.xavier_uniform_,
