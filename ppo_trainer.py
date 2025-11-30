@@ -574,6 +574,11 @@ class MegatronDeepSpeedPPOTrainer:
 
                 self.reference.run_comprehensive_debug()
 
+                # 运行这些调试函数来定位具体问题
+                self.reference.debug_attention_mechanism(input_ids)
+                self.reference.debug_residual_connections(input_ids)
+                self.reference.debug_lm_head_output(input_ids)
+
                 continue
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)

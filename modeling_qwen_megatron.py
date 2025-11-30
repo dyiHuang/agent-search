@@ -717,6 +717,121 @@ class Qwen2MegatronModel(MegatronModule):
 
         utils.print_rank_0("✅ 全面调试完成")
 
+    def debug_attention_mechanism(self, input_ids):
+        """调试注意力机制"""
+        utils.print_rank_0("=== 注意力机制调试 ===")
+
+        hidden_states = self.embedding(input_ids.transpose(0, 1))
+
+        for layer_idx in range(3):  # 只检查前3层
+            utils.print_rank_0(f"\n--- 第{layer_idx}层注意力调试 ---")
+            layer = self.layers[layer_idx]
+
+            # 检查输入
+            input_stats = f"输入: mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}"
+
+            # 注意力层前向传播
+            attention_output = layer.self_attention(
+                hidden_states,
+                attention_mask=None,
+                rotary_pos_emb=None
+            )
+
+            if isinstance(attention_output, tuple):
+                attention_output = attention_output[0]
+
+            utils.print_rank_0(
+                f"{input_stats} -> 注意力输出: mean={attention_output.mean():.6f}, std={attention_output.std():.6f}")
+
+            # 检查注意力权重
+            if hasattr(layer.self_attention.core_attention, 'attention_scores'):
+                scores = layer.self_attention.core_attention.attention_scores
+                utils.print_rank_0(f"注意力分数范围: [{scores.min():.3f}, {scores.max():.3f}]")
+
+            # 继续完整层的前向传播
+            layer_output = layer(hidden_states)
+            if isinstance(layer_output, tuple):
+                hidden_states = layer_output[0]
+            else:
+                hidden_states = layer_output
+
+    def debug_residual_connections(self, input_ids):
+        """调试残差连接和层归一化"""
+        utils.print_rank_0("=== 残差连接调试 ===")
+
+        hidden_states = self.embedding(input_ids.transpose(0, 1))
+
+        for layer_idx in range(3):
+            utils.print_rank_0(f"\n--- 第{layer_idx}层残差连接 ---")
+            layer = self.layers[layer_idx]
+
+            # 输入统计
+            input_mean = hidden_states.mean().item()
+            input_std = hidden_states.std().item()
+
+            # 输入层归一化
+            norm_input = layer.input_layernorm(hidden_states)
+            utils.print_rank_0(f"输入层归一化: mean={norm_input.mean():.6f}, std={norm_input.std():.6f}")
+
+            # 注意力输出
+            attention_output = layer.self_attention(norm_input)
+            if isinstance(attention_output, tuple):
+                attention_output = attention_output[0]
+
+            # 残差连接1
+            residual1 = hidden_states + attention_output
+            utils.print_rank_0(f"残差连接1: mean={residual1.mean():.6f}, std={residual1.std():.6f}")
+
+            # MLP层归一化
+            norm_mlp = layer.pre_mlp_layernorm(residual1)
+            utils.print_rank_0(f"MLP层归一化: mean={norm_mlp.mean():.6f}, std={norm_mlp.std():.6f}")
+
+            # MLP输出
+            mlp_output = layer.mlp(norm_mlp)
+
+            # 残差连接2
+            residual2 = residual1 + mlp_output
+            utils.print_rank_0(f"残差连接2: mean={residual2.mean():.6f}, std={residual2.std():.6f}")
+
+            hidden_states = residual2
+
+    def debug_lm_head_output(self, input_ids):
+        """调试LM Head输出"""
+        utils.print_rank_0("=== LM Head输出调试 ===")
+
+        # 完整前向传播到最后一层
+        hidden_states = self.embedding(input_ids.transpose(0, 1))
+
+        for layer in self.layers:
+            layer_output = layer(hidden_states)
+            if isinstance(layer_output, tuple):
+                hidden_states = layer_output[0]
+            else:
+                hidden_states = layer_output
+
+        # 最终归一化
+        if self.final_norm:
+            hidden_states = self.final_norm(hidden_states)
+            utils.print_rank_0(f"最终归一化输出: mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
+
+        # LM Head前向传播
+        lm_output = self.lm_head(hidden_states)
+        utils.print_rank_0(f"LM Head输出类型: {type(lm_output)}")
+
+        if isinstance(lm_output, tuple):
+            utils.print_rank_0(f"LM Head tuple长度: {len(lm_output)}")
+            for i, output in enumerate(lm_output):
+                utils.print_rank_0(f"  输出{i}: 形状={output.shape}, mean={output.mean():.6f}, std={output.std():.6f}")
+            # 通常第一个元素是logits
+            logits = lm_output[0]
+        else:
+            logits = lm_output
+
+        logits = logits.transpose(0, 1)
+        utils.print_rank_0(f"最终logits: 形状={logits.shape}, mean={logits.mean():.6f}, std={logits.std():.6f}")
+
+        return logits
+
 
 class Qwen2MegatronCritic(Qwen2MegatronModel):
     """PPO Critic模型（价值网络），兼容Megatron TP并行"""
