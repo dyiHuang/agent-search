@@ -180,6 +180,7 @@ class Qwen2MegatronModel(MegatronModule):
         # 输出层（final_norm + lm_head）：仅 PP 最后一个 stage 初始化
         self.final_norm = None
         self.lm_head = None
+        utils.print_rank_0(f"self.pp_rank: {self.pp_rank}, self.pp_size: {self.pp_size}")
         if self.pp_rank == self.pp_size - 1:
             self.final_norm = Qwen2RMSNorm(g_config, self.hidden_size, eps=qwen_config.rms_norm_eps)
             self.lm_head = tensor_parallel.ColumnParallelLinear(
