@@ -190,3 +190,53 @@ def print_rank_0(message):
             print(message, flush=True)
     else:
         print(message, flush=True)
+
+
+import torch
+
+
+def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float = 1e-6, rtol: float = 1e-5) -> list:
+    """
+    对比两个张量的元素差异，返回不相等元素的维度位置
+
+    Args:
+        tensor1: 第一个张量
+        tensor2: 第二个张量
+        atol: 绝对误差容限（用于浮点数比较）
+        rtol: 相对误差容限（用于浮点数比较）
+
+    Returns:
+        不相等元素的位置列表，每个元素是一个元组表示维度索引
+    """
+    # 1. 检查形状是否匹配
+    if tensor1.shape != tensor2.shape:
+        raise ValueError(f"张量形状不匹配: {tensor1.shape} vs {tensor2.shape}")
+
+    # 2. 检查数据类型和设备是否一致
+    if tensor1.dtype != tensor2.dtype:
+        print_rank_0(f"警告：张量数据类型不同: {tensor1.dtype} vs {tensor2.dtype}")
+    if tensor1.device != tensor2.device:
+        raise ValueError(f"张量设备不匹配: {tensor1.device} vs {tensor2.device}")
+
+    # 3. 逐元素比较（区分整数和浮点数）
+    if torch.is_floating_point(tensor1):
+        # 浮点数用 allclose 处理精度问题
+        equal_mask = torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol)
+        if equal_mask:
+            return []
+        # 获取不相等的掩码
+        diff_mask = ~torch.isclose(tensor1, tensor2, atol=atol, rtol=rtol)
+    else:
+        # 整数直接用相等判断
+        equal_mask = torch.equal(tensor1, tensor2)
+        if equal_mask:
+            return []
+        diff_mask = tensor1 != tensor2
+
+    # 4. 提取不相等元素的位置（返回格式为 (dim0, dim1, ..., dimN) 的元组列表）
+    diff_indices = torch.nonzero(diff_mask, as_tuple=False).tolist()
+    # 转换为元组格式便于阅读
+    diff_positions = [tuple(idx) for idx in diff_indices]
+
+    return diff_positions
+

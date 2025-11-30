@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core import parallel_state, tensor_parallel, pipeline_parallel
+from megatron.core.models.huggingface import qwen_model
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.transformer_layer import TransformerConfig, TransformerLayer, TransformerLayerSubmodules
@@ -219,7 +220,7 @@ class Qwen2MegatronModel(MegatronModule):
             seq_len = hidden_states.size(0)
             position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
             # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-            cos, sin = self.rotary_emb(hidden_states, position_ids)     # [b, s, h]
+            cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
             cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
 
             rotary_pos_emb = cos_sin, cos_sin
@@ -592,7 +593,6 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 group=parallel_state.get_tensor_model_parallel_group()
             )
 
-
         # 4. 冻结Actor底层参数（可选，根据训练策略调整）
         if self.freeze_actor_backbone:
             self._freeze_actor_components()
@@ -841,4 +841,30 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     #     lora_config.target_modules = target_modules
     #     model = get_peft_model(model, lora_config)
     #     model.print_trainable_parameters() # 验证 LoRa 训练参数占比（通常 <1%）
+
+    diffs = utils.find_tensor_diff(hf_model.model.embed_tokens.weight, model.embedding.weight)
+    utils.print_rank_0(f"model.embedding.weight差异位置：{diffs}")
+    for i in range(len(hf_model.model.layers)):
+        hf_qkv = torch.cat([hf_model.model.layers[i].self_attn.q_proj.weight, hf_model.model.layers[i].self_attn.k_proj.weight,
+                            hf_model.model.layers[i].self_attn.v_proj.weight],
+                           dim=0)
+        diffs = utils.find_tensor_diff(hf_qkv, model.layers[i].self_attention.linear_qkv.weight)
+        utils.print_rank_0(f"model.layers[{i}].self_attention.linear_qkv.weight差异位置：{diffs}")
+        hf_qkv_bias = torch.cat([hf_model.model.layers[i].self_attn.q_proj.bias, hf_model.model.layers[i].self_attn.k_proj.bias,
+                            hf_model.model.layers[i].self_attn.v_proj.bias],
+                           dim=0)
+        diffs = utils.find_tensor_diff(hf_qkv_bias, model.layers[i].self_attention.linear_qkv.bias)
+        utils.print_rank_0(f"model.layers[{i}].self_attention.linear_qkv.bias差异位置：{diffs}")
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].self_attn.o_proj.weight, model.layers[i].self_attention.linear_proj.weight)
+        utils.print_rank_0(f"model.layers[{i}].self_attention.linear_proj.bias：{diffs}")
+        linear_fc1 = torch.cat(
+            [hf_model.model.layers[i].mlp.gate_proj.weight, hf_model.model.layers[i].mlp.up_proj.weight],
+            dim=0)
+        diffs = utils.find_tensor_diff(linear_fc1, model.layers[i].mlp.linear_fc1.weight)
+        utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc1.weight：{diffs}")
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].mlp.down_proj.weight, model.layers[i].mlp.linear_fc2.weight)
+        utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc2.weight：{diffs}")
+
+    diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
+    utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
     return model
