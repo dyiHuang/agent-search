@@ -171,7 +171,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         # Transformer 层：仅初始化当前 stage 负责的层（核心 PP 拆分）
         self.layers = nn.ModuleList([
-            Qwen2MegatronTransformerLayer(megatron_config, i + 1)
+            Qwen2MegatronTransformerLayer(megatron_config, i - self.start_layer + 1)
             for i in range(self.start_layer, self.end_layer)
         ])
 
