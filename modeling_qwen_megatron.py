@@ -815,7 +815,7 @@ class Qwen2MegatronModel(MegatronModule):
             mlp_output = layer.mlp(norm_mlp)
 
             # 残差连接2
-            residual2 = residual1 + mlp_output
+            residual2 = residual1 + mlp_output[0]
             utils.print_rank_0(f"残差连接2: mean={residual2.mean():.6f}, std={residual2.std():.6f}")
 
             hidden_states = residual2
