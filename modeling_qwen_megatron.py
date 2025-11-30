@@ -340,7 +340,7 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = torch.cat([o for o in logits], dim=0)  # (bs, seq_size)
                 logits = logits.to(torch.float32)
             else:
-                logits = torch.empty(size=(batch_size, step),
+                logits = torch.empty(size=(batch_size, 1),
                                      dtype=torch.float32,
                                      device=input_ids.device)
 
