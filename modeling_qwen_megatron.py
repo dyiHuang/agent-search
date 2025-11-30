@@ -910,7 +910,7 @@ class Qwen2MegatronModel(MegatronModule):
 
                 # 逐步执行MLP前向传播
                 # 1. linear_fc1
-                fc1_output = mlp.linear_fc1(mlp_input)
+                fc1_output = mlp.linear_fc1(mlp_input)[0]
                 utils.print_rank_0(
                     f"linear_fc1输出: shape={fc1_output.shape}, mean={fc1_output.mean():.6f}, std={fc1_output.std():.6f}")
 
@@ -932,7 +932,7 @@ class Qwen2MegatronModel(MegatronModule):
                     utils.print_rank_0(f"激活函数输出: mean={intermediate.mean():.6f}, std={intermediate.std():.6f}")
 
                 # 5. linear_fc2
-                fc2_output = mlp.linear_fc2(intermediate)
+                fc2_output = mlp.linear_fc2(intermediate)[0]
                 utils.print_rank_0(f"linear_fc2输出: mean={fc2_output.mean():.6f}, std={fc2_output.std():.6f}")
 
                 # 6. dropout (如果有)
