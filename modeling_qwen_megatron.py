@@ -802,7 +802,11 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         bf16=config.deepspeed.bf16.enabled,
         fp16=config.deepspeed.fp16.enabled,
         activation_func=ACT2FN[qwen_config.hidden_act],
-        gated_linear_unit=True
+        gated_linear_unit=True,
+        add_bias_linear=False,
+        add_qkv_bias=True,
+        attention_dropout=qwen_config.attention_dropout,
+        hidden_dropout=0.0
     )
     utils.print_rank_0(f"megatron TransformerConfig: {megatron_config}")
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）

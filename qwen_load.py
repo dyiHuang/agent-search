@@ -307,6 +307,82 @@ def _broadcast_tp_shard_tensor_qkv(tensor, q_name, k_name, v_name, state_dict, m
             tensor.data.copy_(sync_tensor)
 
 
+def _broadcast_tp_shard_tensor_qkv_bias(tensor, q_name, k_name, v_name, state_dict, mp_group, params_dtype, config) -> torch.Tensor:
+    """broadcast tensor in tp shards across mp_group"""
+    tp_rank = parallel_state.get_tensor_model_parallel_rank()
+    tp_size = parallel_state.get_tensor_model_parallel_world_size()
+
+    if torch.distributed.get_rank() == 0:
+        assert (q_name in state_dict and k_name in state_dict and v_name in state_dict)
+        full_weight_q_bias = state_dict[q_name]
+        full_weight_k_bias = state_dict[k_name]
+        full_weight_v_bias = state_dict[v_name]
+
+        hidden_size_per_head = config.hidden_size // config.num_attention_heads
+
+        if config.num_key_value_heads >= tp_size:
+            q_size_tp = config.hidden_size // tp_size
+            kv_size_tp = hidden_size_per_head * config.num_key_value_heads // tp_size
+            total_size = q_size_tp + 2 * kv_size_tp
+            new_weight_qkv_bias = torch.empty(total_size * tp_size,
+                                         dtype=params_dtype,
+                                         device=torch.cuda.current_device())
+            for i in range(tp_size):
+                q_part = full_weight_q_bias[i * q_size_tp:(i + 1) * q_size_tp]
+                k_part = full_weight_k_bias[i * kv_size_tp:(i + 1) * kv_size_tp]
+                v_part = full_weight_v_bias[i * kv_size_tp:(i + 1) * kv_size_tp]
+                new_weight_qkv_bias[i * total_size:(i + 1) * total_size].copy_(torch.cat([q_part, k_part, v_part],
+                                                                                    dim=0))
+
+        else:
+            q_size_tp = config.hidden_size // tp_size
+            kv_size_tp = hidden_size_per_head
+            total_size = q_size_tp + 2 * kv_size_tp
+            new_weight_qkv_bias = torch.empty(total_size * tp_size,
+                                         dtype=params_dtype,
+                                         device=torch.cuda.current_device())
+            for i in range(tp_size):
+                q_part = full_weight_q_bias[i * q_size_tp:(i + 1) * q_size_tp]
+                start_idx = i * config.num_key_value_heads // tp_size * hidden_size_per_head
+                end_idx = (i * config.num_key_value_heads // tp_size + 1) * hidden_size_per_head
+                k_part = full_weight_k_bias[start_idx:end_idx]
+                v_part = full_weight_v_bias[start_idx:end_idx]
+                new_weight_qkv_bias[i * total_size:(i + 1) * total_size].copy_(torch.cat([q_part, k_part, v_part],
+                                                                                    dim=0))
+
+        tensor_chunk = torch.chunk(new_weight_qkv_bias, tp_size, dim=0)
+        chunk_shape = tensor_chunk[0].shape
+    else:
+        chunk_shape = None
+
+    obj_list = [chunk_shape]
+    dist.broadcast_object_list(obj_list, src=0, group=mp_group)
+    chunk_shape = obj_list[0]
+    if chunk_shape is None:
+        # all or none ranks in the mp_group should reach here
+        print(f"tp_shard tensor:[{q_name}] not in state_dict, skip loading")
+        return
+
+    if tensor is None:
+        sync_tensor = torch.empty(
+            chunk_shape,
+            dtype=params_dtype,
+            device=torch.cuda.current_device(),
+            requires_grad=False,
+        )
+    else:
+        assert (tensor.shape == chunk_shape
+                ), f"rank #{torch.distributed.get_rank()} tensor {q_name} shape {tensor.shape} != {chunk_shape}"
+        sync_tensor = torch.empty_like(tensor, device=torch.cuda.current_device(), requires_grad=False)
+
+    for i in range(tp_size):
+        if torch.distributed.get_rank() == 0:
+            sync_tensor.data.copy_(tensor_chunk[i])
+        dist.broadcast(sync_tensor, src=0, group=mp_group)
+        if (i == tp_rank) and (tensor is not None):
+            tensor.data.copy_(sync_tensor)
+
+
 def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, is_value_model=False):
     """Load merged state_dict to sharded Megatron module in training.
     """
@@ -366,6 +442,14 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
                 f"{layer_name}.self_attn.q_proj.weight",
                 f"{layer_name}.self_attn.k_proj.weight",
                 f"{layer_name}.self_attn.v_proj.weight",
+                state_dict, mp_group, params_dtype, config
+            )
+
+            _broadcast_tp_shard_tensor_qkv_bias(
+                sync_layer.self_attention.linear_qkv.bias if dst_pp_rank == pp_rank else None,
+                f"{layer_name}.self_attn.q_proj.bias",
+                f"{layer_name}.self_attn.k_proj.bias",
+                f"{layer_name}.self_attn.v_proj.bias",
                 state_dict, mp_group, params_dtype, config
             )
 
