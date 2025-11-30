@@ -339,11 +339,12 @@ class Qwen2MegatronModel(MegatronModule):
             #     self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
 
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
-                # only on last rank. It should be on every tp rank
-                logits = torch.cat([o for o in logits], dim=0)  # (bs, seq_size)
+                # 确保正确聚合所有micro batch的logits
+                if isinstance(logits, list):
+                    logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
                 logits = logits.to(torch.float32)
             else:
-                logits = torch.empty(size=(batch_size, 1),
+                logits = torch.empty(size=(batch_size, 1, self.vocab_size),
                                      dtype=torch.float32,
                                      device=input_ids.device)
 
@@ -846,6 +847,9 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     diffs = utils.find_tensor_diff(hf_model.model.embed_tokens.weight, model.embedding.weight)
     utils.print_rank_0(f"model.embedding.weight差异位置：{diffs}")
     for i in range(len(hf_model.model.layers)):
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].input_layernorm.weight,
+                                       model.layers[i].input_layernorm.weight)
+        utils.print_rank_0(f"model.layers[{i}].input_layernorm.weight：{diffs}")
         hf_qkv = torch.cat([hf_model.model.layers[i].self_attn.q_proj.weight, hf_model.model.layers[i].self_attn.k_proj.weight,
                             hf_model.model.layers[i].self_attn.v_proj.weight],
                            dim=0)
@@ -865,7 +869,12 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc1.weight：{diffs}")
         diffs = utils.find_tensor_diff(hf_model.model.layers[i].mlp.down_proj.weight, model.layers[i].mlp.linear_fc2.weight)
         utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc2.weight：{diffs}")
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].post_attention_layernorm.weight,
+                                       model.layers[i].pre_mlp_layernorm.weight)
+        utils.print_rank_0(f"model.layers[{i}].pre_mlp_layernorm.weight：{diffs}")
 
+    diffs = utils.find_tensor_diff(hf_model.norm.weight, model.final_norm.weight)
+    utils.print_rank_0(f"model.final_norm.weight差异位置：{diffs}")
     diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
     utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
     return model
