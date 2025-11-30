@@ -715,6 +715,11 @@ class Qwen2MegatronModel(MegatronModule):
         else:
             utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
 
+        # 运行这些调试函数来定位具体问题
+        self.debug_attention_mechanism(input_ids)
+        self.debug_residual_connections(input_ids)
+        self.debug_lm_head_output(input_ids)
+
         utils.print_rank_0("✅ 全面调试完成")
 
     def debug_attention_mechanism(self, input_ids):
