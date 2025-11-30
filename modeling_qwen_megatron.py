@@ -78,7 +78,8 @@ class Qwen2RMSNorm(nn.Module):
         Qwen2RMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        params_dtype = get_params_dtype(config)
+        self.weight = nn.Parameter(torch.ones(hidden_size, dtype=params_dtype))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -782,11 +783,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
 
     utils.print_rank_0(f"qwen2 config: {qwen_config}")
 
-    params_dtype = torch.get_default_dtype()
-    if config.deepspeed.bf16.enabled:
-        params_dtype = torch.bfloat16
-    if config.deepspeed.fp16.enabled:
-        params_dtype = torch.float16
+    params_dtype = get_params_dtype(config)
 
     # 配置 Megatron 并行参数（需与 DeepSpeed 对齐）
     megatron_config = TransformerConfig(
@@ -878,3 +875,12 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
     utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
     return model
+
+
+def get_params_dtype(config):
+    params_dtype = torch.get_default_dtype()
+    if config.deepspeed.bf16.enabled:
+        params_dtype = torch.bfloat16
+    if config.deepspeed.fp16.enabled:
+        params_dtype = torch.float16
+    return params_dtype
