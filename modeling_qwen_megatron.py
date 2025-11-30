@@ -855,7 +855,8 @@ class Qwen2MegatronModel(MegatronModule):
 
         if isinstance(lm_output, tuple):
             utils.print_rank_0(f"LM Head tuple长度: {len(lm_output)}")
-            for i, output in enumerate(lm_output):
+            for i, _ in enumerate(lm_output):
+                output = lm_output[i]
                 utils.print_rank_0(f"  输出{i}: 形状={output.shape}, mean={output.mean():.6f}, std={output.std():.6f}")
             # 通常第一个元素是logits
             logits = lm_output[0]
