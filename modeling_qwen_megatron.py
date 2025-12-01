@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Callable
 
 import torch
 from torch import Tensor
@@ -24,8 +24,9 @@ from transformers import Qwen2Config
 from transformers.integrations import use_kernel_forward_from_hub
 from transformers.modeling_utils import PreTrainedModel
 from transformers import Qwen2ForCausalLM
-from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding
+from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding, eager_attention_forward
 from transformers.activations import ACT2FN
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.cache_utils import Cache, DynamicCache
@@ -38,47 +39,65 @@ import core_algos
 import qwen_load
 from tensordict import TensorDict
 
-# class Qwen2DotProductAttention(DotProductAttention):
-#     def __init__(self, config: TransformerConfig, layer_number: int, attn_mask_type: AttnMaskType, attention_type: str,
-#                  attention_dropout: float = None, softmax_scale: float = None, cp_comm_type: str = None,
-#                  pg_collection: ProcessGroupCollection = None):
-#         super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale,
-#                          cp_comm_type, pg_collection)
-#
-#         self.num_key_value_groups = self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-#
-#     def forward(self,
-#         query: Tensor,
-#         key: Tensor,
-#         value: Tensor,
-#         attention_mask: Tensor,
-#         attn_mask_type: AttnMaskType = None,
-#         attention_bias: Tensor = None,
-#         packed_seq_params: Optional[PackedSeqParams] = None,):
-#
-#         attention_interface: Callable = eager_attention_forward
-#         if self.config._attn_implementation != "eager":
-#             attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
-#
-#         attn_output, attn_weights = attention_interface(
-#             self,
-#             query_states,
-#             key_states,
-#             value_states,
-#             attention_mask,
-#             dropout=0.0 if not self.training else self.attention_dropout,
-#             scaling=self.scaling,
-#             sliding_window=self.sliding_window,  # main diff with Llama
-#             **kwargs,
-#         )
-#
-#
-#         return
-#
-#
-#
-#
-#
+
+class Qwen2DotProductAttention(DotProductAttention):
+    def __init__(self, config: TransformerConfig, layer_number: int, attn_mask_type: AttnMaskType, attention_type: str,
+                 attention_dropout: float = None, softmax_scale: float = None, cp_comm_type: str = None,
+                 pg_collection: ProcessGroupCollection = None):
+        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale,
+                         cp_comm_type, pg_collection)
+
+        self.num_key_value_groups = self.num_attention_heads_per_partition // self.num_query_groups_per_partition
+
+    def forward(self,
+                query: Tensor,
+                key: Tensor,
+                value: Tensor,
+                attention_mask: Tensor,
+                attn_mask_type: AttnMaskType = None,
+                attention_bias: Tensor = None,
+                packed_seq_params: Optional[PackedSeqParams] = None, ):
+        attention_interface: Callable = eager_attention_forward
+        if self.qwen_config._attn_implementation != "eager":
+            attention_interface = ALL_ATTENTION_FUNCTIONS[self.qwen_config._attn_implementation]
+        # [sq, b, np, hn],[sq, b, gp, hn] -> [b, np, sq, hn],[b, gp, sq, hn]
+        query = query.transpose(0, 1).transpose(1, 2).contiguous()
+        key = key.transpose(0, 1).transpose(1, 2).contiguous()
+        value = value.transpose(0, 1).transpose(1, 2).contiguous()
+
+        attn_output, attn_weights = attention_interface(
+            self,
+            query,
+            key,
+            value,
+            attention_mask,
+            dropout=self.config.attention_dropout,
+            scaling=self.softmax_scale,
+            sliding_window=None,  # main diff with Llama
+            # **kwargs,
+        )
+
+        # =========================
+        # Context layer. [sq, b, hp]
+        # =========================
+
+        # value -> context layer.
+        # [sk, b, np, hn] --> [b, np, sq, hn]
+
+        # context layer shape: [b, np, sq, hn]
+        output_size = (value.size(0), query.size(1), query.size(2), value.size(3))
+
+        # change view [b, np, sq, hn]
+        context = attn_output.view(*output_size)
+
+        # [b, np, sq, hn] --> [sq, b, np, hn]
+        context = context.permute(2, 0, 1, 3).contiguous()
+
+        # [sq, b, np, hn] --> [sq, b, hp]
+        new_context_shape = context.size()[:-2] + (self.hidden_size_per_partition,)
+        context = context.view(*new_context_shape)
+
+        return context
 
 
 class Qwen2MegatronAttention(SelfAttention):
@@ -94,7 +113,7 @@ class Qwen2MegatronAttention(SelfAttention):
             config,
             submodules=SelfAttentionSubmodules(
                 linear_qkv=tensor_parallel.ColumnParallelLinear,
-                core_attention=DotProductAttention,
+                core_attention=Qwen2DotProductAttention,
                 linear_proj=tensor_parallel.RowParallelLinear,
                 q_layernorm=IdentityOp,
                 k_layernorm=IdentityOp,
@@ -140,7 +159,7 @@ class Qwen2RMSNorm(nn.Module):
 
 
 class Qwen2MegatronTransformerLayer(TransformerLayer):
-    def __init__(self, config: TransformerConfig, layer_number: int = 1):
+    def __init__(self, config: TransformerConfig, layer_number: int = 1, qwen_config: Qwen2Config = None):
         super().__init__(
             config,
             submodules=TransformerLayerSubmodules(
@@ -159,6 +178,8 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
                 },
             ),
             layer_number=layer_number)
+        self.self_attention.core_attention.qwen_config = qwen_config
+        self.attention_type = qwen_config.layer_types[layer_number-1]
 
 
 class Qwen2PreTrainedModel(PreTrainedModel):
@@ -220,7 +241,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         # Transformer 层：仅初始化当前 stage 负责的层（核心 PP 拆分）
         self.layers = nn.ModuleList([
-            Qwen2MegatronTransformerLayer(megatron_config, i - self.start_layer + 1)
+            Qwen2MegatronTransformerLayer(megatron_config, i - self.start_layer + 1, qwen_config)
             for i in range(self.start_layer, self.end_layer)
         ])
 
@@ -271,13 +292,48 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = self.input_tensor
 
         # -------------------------- 修正注意力掩码维度 --------------------------
-        if attention_mask is not None:
-            # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
-            # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        # if attention_mask is not None:
+        #     # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
+        #     # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
+        #     attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
-        seq_len = hidden_states.size(0)
-        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
+        # 检查Rotary Embedding
+        use_cache: Optional[bool] = None
+        cache_position: Optional[torch.LongTensor] = None
+        past_key_values: Optional[Cache] = None
+        position_ids: Optional[torch.LongTensor] = None
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache(config=self.model.config)
+
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + hidden_states.shape[0], device=hidden_states.device
+            )
+
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        # It may already have been prepared by e.g. `generate`
+        if not isinstance(causal_mask_mapping := attention_mask, dict):
+            hidden_states = hidden_states.transpose(1, 0)
+            # Prepare mask arguments
+            mask_kwargs = {
+                "config": self.model.config,
+                "input_embeds": hidden_states,
+                "attention_mask": attention_mask,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "position_ids": position_ids,
+            }
+            # Create the masks
+            causal_mask_mapping = {
+                "full_attention": create_causal_mask(**mask_kwargs),
+            }
+            hidden_states = hidden_states.transpose(1, 0).contiguous()
+
+        # seq_len = hidden_states.size(0)
+        # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
         cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
@@ -287,7 +343,7 @@ class Qwen2MegatronModel(MegatronModule):
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
+                hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb
             )
             # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
             hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
@@ -503,7 +559,8 @@ class Qwen2MegatronModel(MegatronModule):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,# attention_mask=micro_batch["attention_mask"],
+            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
+                           # attention_mask=micro_batch["attention_mask"],
                            only_last_token=only_last_token)
             return output, partial(loss_func, data=micro_batch)
 
