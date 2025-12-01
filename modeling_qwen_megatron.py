@@ -1536,6 +1536,7 @@ def debug_mlp_implementation(self, input_ids):
     cos, sin = rotary_pos_emb
     utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
     utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+    rotary_pos_emb = self.model.rotary_emb(hidden_states, position_ids)
 
 
     # It may already have been prepared by e.g. `generate`
