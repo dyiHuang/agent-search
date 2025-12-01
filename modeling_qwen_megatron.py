@@ -257,6 +257,7 @@ class Qwen2MegatronModel(MegatronModule):
                 init_method=megatron_config.init_method
             )
         self.model_type = ModelType.encoder_or_decoder
+        self.qwen_config = qwen_config
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.
@@ -304,7 +305,7 @@ class Qwen2MegatronModel(MegatronModule):
         past_key_values: Optional[Cache] = None
         position_ids: Optional[torch.LongTensor] = None
         if use_cache and past_key_values is None:
-            past_key_values = DynamicCache(config=self.model.config)
+            past_key_values = DynamicCache(config=self.qwen_config)
 
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -320,7 +321,7 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = hidden_states.transpose(1, 0)
             # Prepare mask arguments
             mask_kwargs = {
-                "config": self.model.config,
+                "config": self.qwen_config,
                 "input_embeds": hidden_states,
                 "attention_mask": attention_mask,
                 "cache_position": cache_position,
