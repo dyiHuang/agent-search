@@ -1561,7 +1561,7 @@ def debug_mlp_implementation(self, input_ids):
 
         # 运行到MLP输入
         attention_output = layer.self_attn(hidden_states=hidden_states,
-                                           attention_mask=attention_mask,
+                                           attention_mask=causal_mask_mapping[layer.attention_type],
                                            position_ids=position_ids,
                                            past_key_values=past_key_values,
                                            use_cache=use_cache,
