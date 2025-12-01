@@ -1579,7 +1579,6 @@ def debug_mlp_implementation(self, input_ids):
             mlp = layer.mlp
             # 检查MLP各组件
             utils.print_rank_0(f"MLP类型: {type(mlp)}")
-            utils.print_rank_0(f"MLP配置: gated_linear_unit={mlp.config.gated_linear_unit}")
 
             # 2. 分为gate和up
             gate = mlp.gate_proj(mlp_input)
