@@ -1400,9 +1400,9 @@ def detailed_forward_debug(self, input_ids, attention_mask=None):
             hidden_states,
             attention_mask=causal_mask_mapping[layer.attention_type],
             position_ids=position_ids,
-            past_key_values=None,
-            use_cache=True,
-            cache_position=None,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            cache_position=cache_position,
             position_embeddings=rotary_pos_emb,
             # **kwargs,
         )
@@ -1566,7 +1566,7 @@ def debug_mlp_implementation(self, input_ids):
                                            past_key_values=past_key_values,
                                            use_cache=use_cache,
                                            cache_position=cache_position,
-                                           position_embeddings=rotary_pos_emb)
+                                           position_embeddings=rotary_pos_emb,)
         if isinstance(attention_output, tuple):
             attention_output = attention_output[0]
         residual1 = hidden_states + attention_output
