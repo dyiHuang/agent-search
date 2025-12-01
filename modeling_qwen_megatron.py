@@ -1231,6 +1231,8 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         ffn_hidden_size=qwen_config.intermediate_size,
         layernorm_epsilon=qwen_config.rms_norm_eps,
         init_method=torch.nn.init.xavier_uniform_,
+        output_layer_init_method=torch.nn.init.xavier_uniform_,
+        activation_func_clamp_value=10.0,
         tensor_model_parallel_size=parallel_state.get_tensor_model_parallel_world_size(),
         pipeline_model_parallel_size=parallel_state.get_pipeline_model_parallel_world_size(),
         params_dtype=params_dtype,
