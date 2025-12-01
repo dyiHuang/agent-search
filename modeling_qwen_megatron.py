@@ -1560,12 +1560,13 @@ def debug_mlp_implementation(self, input_ids):
 
         # 运行到MLP输入
         attention_output = layer.self_attn(hidden_states=hidden_states,
+                                           position_embeddings=rotary_pos_emb,
                                            attention_mask=causal_mask_mapping[layer.attention_type],
-                                           position_ids=position_ids,
                                            past_key_values=past_key_values,
-                                           use_cache=use_cache,
                                            cache_position=cache_position,
-                                           position_embeddings=(cos, sin),)
+                                           use_cache=use_cache,
+                                           position_ids=position_ids,
+                                           )
         if isinstance(attention_output, tuple):
             attention_output = attention_output[0]
         residual1 = hidden_states + attention_output
