@@ -195,7 +195,7 @@ def print_rank_0(message):
 import torch
 
 
-def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float = 1e-6, rtol: float = 1e-5) -> list:
+def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float = 1e-7, rtol: float = 1e-6) -> list:
     """
     对比两个张量的元素差异，返回不相等元素的维度位置
 
