@@ -580,6 +580,8 @@ class MegatronDeepSpeedPPOTrainer:
                 utils.print_rank_0(f"rollout successful:{self.global_steps}, "
                                    f"responses:{self.tokenizer.decode(responses[0])}")
 
+                continue
+
                 # 2. 计算奖励
                 rewards = self._compute_reward(batch_dict, responses)
                 utils.print_rank_0(f"_compute_reward successful:{self.global_steps}")
