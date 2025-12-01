@@ -1378,8 +1378,8 @@ def detailed_forward_debug(self, input_ids, attention_mask=None):
             "config": self.model.config,
             "input_embeds": hidden_states,
             "attention_mask": attention_mask,
-            "cache_position": None,
-            "past_key_values": None,
+            "cache_position": cache_position,
+            "past_key_values": past_key_values,
             "position_ids": position_ids,
         }
         # Create the masks
@@ -1546,8 +1546,8 @@ def debug_mlp_implementation(self, input_ids):
             "config": self.model.config,
             "input_embeds": hidden_states,
             "attention_mask": attention_mask,
-            "cache_position": None,
-            "past_key_values": None,
+            "cache_position": cache_position,
+            "past_key_values": past_key_values,
             "position_ids": position_ids,
         }
         # Create the masks
