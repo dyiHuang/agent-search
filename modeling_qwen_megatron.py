@@ -685,14 +685,14 @@ class Qwen2MegatronModel(MegatronModule):
 
         return current_input
 
-    def run_comprehensive_debug(self):
+    def run_comprehensive_debug(self, tokenizer):
         """运行全面的调试"""
         utils.print_rank_0("🚀 开始全面调试...")
 
         # 使用固定的简单输入
         test_prompt = "Hello"
-        if hasattr(self, 'tokenizer'):
-            input_ids = self.tokenizer.encode(test_prompt, return_tensors="pt").to('cuda')
+        if tokenizer is not None:
+            input_ids = tokenizer.encode(test_prompt, return_tensors="pt").to('cuda')
         else:
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
@@ -712,8 +712,8 @@ class Qwen2MegatronModel(MegatronModule):
         generated = self.debug_generation_sampling(input_ids)
 
         # 3. 验证最终输出
-        if hasattr(self, 'tokenizer'):
-            generated_text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
+        if tokenizer is not None:
+            generated_text = tokenizer.decode(generated[0], skip_special_tokens=True)
             utils.print_rank_0(f"\n最终生成文本: '{generated_text}'")
         else:
             utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")

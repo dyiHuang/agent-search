@@ -572,7 +572,7 @@ class MegatronDeepSpeedPPOTrainer:
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
 
-                self.reference.run_comprehensive_debug()
+                self.reference.run_comprehensive_debug(self.tokenizer)
 
                 continue
                 # 1. Rollout：生成相应并计算 log prob
