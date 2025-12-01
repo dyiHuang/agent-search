@@ -2,6 +2,7 @@ from functools import partial
 from typing import Optional, Union, List, Dict
 
 import torch
+from torch import Tensor
 import torch.nn as nn
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core import parallel_state, tensor_parallel, pipeline_parallel
@@ -28,6 +29,7 @@ from transformers.activations import ACT2FN
 
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.cache_utils import Cache, DynamicCache
+from megatron.core.packed_seq_params import PackedSeqParams
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
@@ -35,6 +37,48 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel
 import core_algos
 import qwen_load
 from tensordict import TensorDict
+
+# class Qwen2DotProductAttention(DotProductAttention):
+#     def __init__(self, config: TransformerConfig, layer_number: int, attn_mask_type: AttnMaskType, attention_type: str,
+#                  attention_dropout: float = None, softmax_scale: float = None, cp_comm_type: str = None,
+#                  pg_collection: ProcessGroupCollection = None):
+#         super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale,
+#                          cp_comm_type, pg_collection)
+#
+#         self.num_key_value_groups = self.num_attention_heads_per_partition // self.num_query_groups_per_partition
+#
+#     def forward(self,
+#         query: Tensor,
+#         key: Tensor,
+#         value: Tensor,
+#         attention_mask: Tensor,
+#         attn_mask_type: AttnMaskType = None,
+#         attention_bias: Tensor = None,
+#         packed_seq_params: Optional[PackedSeqParams] = None,):
+#
+#         attention_interface: Callable = eager_attention_forward
+#         if self.config._attn_implementation != "eager":
+#             attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+#
+#         attn_output, attn_weights = attention_interface(
+#             self,
+#             query_states,
+#             key_states,
+#             value_states,
+#             attention_mask,
+#             dropout=0.0 if not self.training else self.attention_dropout,
+#             scaling=self.scaling,
+#             sliding_window=self.sliding_window,  # main diff with Llama
+#             **kwargs,
+#         )
+#
+#
+#         return
+#
+#
+#
+#
+#
 
 
 class Qwen2MegatronAttention(SelfAttention):
@@ -459,7 +503,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model(input_ids=micro_batch["input_ids"], attention_mask=micro_batch["attention_mask"],
+            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,# attention_mask=micro_batch["attention_mask"],
                            only_last_token=only_last_token)
             return output, partial(loss_func, data=micro_batch)
 
@@ -1182,7 +1226,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model(input_ids=micro_batch["input_ids"], attention_mask=micro_batch["attention_mask"],
+            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
                            only_last_token=only_last_token)
             return output, partial(loss_func, data=batch)
 
@@ -1236,7 +1280,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         layernorm_epsilon=qwen_config.rms_norm_eps,
         init_method=torch.nn.init.xavier_uniform_,
         output_layer_init_method=torch.nn.init.xavier_uniform_,
-        activation_func_clamp_value=10.0,
+        # activation_func_clamp_value=10.0,
         tensor_model_parallel_size=parallel_state.get_tensor_model_parallel_world_size(),
         pipeline_model_parallel_size=parallel_state.get_pipeline_model_parallel_world_size(),
         params_dtype=params_dtype,
@@ -1248,7 +1292,8 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         add_bias_linear=False,
         add_qkv_bias=True,
         attention_dropout=qwen_config.attention_dropout,
-        hidden_dropout=0.0
+        hidden_dropout=0.0,
+        attention_softmax_in_fp32=True,
     )
     utils.print_rank_0(f"megatron TransformerConfig: {megatron_config}")
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
