@@ -1365,12 +1365,11 @@ def detailed_forward_debug(self, input_ids, attention_mask=None):
     if position_ids is None:
         position_ids = cache_position.unsqueeze(0)
 
-    cos, sin = self.model.rotary_emb(hidden_states, position_ids)
+    rotary_pos_emb = self.model.rotary_emb(hidden_states, position_ids)
+    cos, sin = rotary_pos_emb
     utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
     utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
-    cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
 
-    rotary_pos_emb = cos_sin, cos_sin
     # It may already have been prepared by e.g. `generate`
     if not isinstance(causal_mask_mapping := attention_mask, dict):
         # Prepare mask arguments
@@ -1533,12 +1532,12 @@ def debug_mlp_implementation(self, input_ids):
     if position_ids is None:
         position_ids = cache_position.unsqueeze(0)
 
-    cos, sin = self.model.rotary_emb(hidden_states, position_ids)
+    rotary_pos_emb = self.model.rotary_emb(hidden_states, position_ids)
+    cos, sin = rotary_pos_emb
     utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
     utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
-    cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
 
-    rotary_pos_emb = cos_sin, cos_sin
+
     # It may already have been prepared by e.g. `generate`
     if not isinstance(causal_mask_mapping := attention_mask, dict):
         # Prepare mask arguments
