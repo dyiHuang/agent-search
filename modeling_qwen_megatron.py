@@ -798,6 +798,8 @@ class Qwen2MegatronModel(MegatronModule):
             input_mean = hidden_states.mean().item()
             input_std = hidden_states.std().item()
 
+            utils.print_rank_0(f"input_mean: mean={input_mean:.6f}, input_std={input_std:.6f}")
+
             # 输入层归一化
             norm_input = layer.input_layernorm(hidden_states)
             utils.print_rank_0(f"输入层归一化: mean={norm_input.mean():.6f}, std={norm_input.std():.6f}")
