@@ -1735,8 +1735,8 @@ def debug_attention_mechanism(self, input_ids):
             f"{input_stats} -> 注意力输出: mean={attention_output.mean():.6f}, std={attention_output.std():.6f}")
 
         # 检查注意力权重
-        if hasattr(layer.self_attn.core_attention, 'attention_scores'):
-            scores = layer.self_attn.core_attention.attention_scores
+        if hasattr(layer.self_attn, 'attention_scores'):
+            scores = layer.self_attn.attention_scores
             utils.print_rank_0(f"注意力分数范围: [{scores.min():.3f}, {scores.max():.3f}]")
 
         # 继续完整层的前向传播
