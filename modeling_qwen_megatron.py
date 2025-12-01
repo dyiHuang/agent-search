@@ -1609,7 +1609,14 @@ def debug_mlp_implementation(self, input_ids):
             utils.print_rank_0(f"MLP最终输出: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
 
         # 完成这一层
-        layer_output = layer(hidden_states)
+        layer_output = layer(hidden_states,
+                             attention_mask=causal_mask_mapping[layer.attention_type],
+                             position_ids=position_ids,
+                             past_key_values=past_key_values,
+                             use_cache=use_cache,
+                             cache_position=cache_position,
+                             position_embeddings=rotary_pos_emb,
+                             )
         if isinstance(layer_output, tuple):
             hidden_states = layer_output[0]
         else:
