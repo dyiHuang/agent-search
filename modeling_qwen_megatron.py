@@ -905,7 +905,7 @@ class Qwen2MegatronModel(MegatronModule):
             residual1 = hidden_states + attention_output
             mlp_input = layer.pre_mlp_layernorm(residual1)
 
-            if layer_idx == 2:  # 重点调试第2层
+            if layer_idx <= 2:  # 重点调试第2层
                 utils.print_rank_0(f"\n--- 第{layer_idx}层MLP详细调试 ---")
                 utils.print_rank_0(f"MLP输入: mean={mlp_input.mean():.6f}, std={mlp_input.std():.6f}")
 
@@ -1572,7 +1572,7 @@ def debug_mlp_implementation(self, input_ids):
         residual1 = hidden_states + attention_output
         mlp_input = layer.post_attention_layernorm(residual1)
 
-        if layer_idx == 2:  # 重点调试第2层
+        if layer_idx <= 2:  # 重点调试第2层
             utils.print_rank_0(f"\n--- 第{layer_idx}层MLP详细调试 ---")
             utils.print_rank_0(f"MLP输入: mean={mlp_input.mean():.6f}, std={mlp_input.std():.6f}")
 
