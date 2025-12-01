@@ -1740,7 +1740,14 @@ def debug_attention_mechanism(self, input_ids):
             utils.print_rank_0(f"注意力分数范围: [{scores.min():.3f}, {scores.max():.3f}]")
 
         # 继续完整层的前向传播
-        layer_output = layer(hidden_states)
+        layer_output = layer(hidden_states,
+                             attention_mask=causal_mask_mapping[layer.attention_type],
+                             position_ids=position_ids,
+                             past_key_values=past_key_values,
+                             use_cache=use_cache,
+                             cache_position=cache_position,
+                             position_embeddings=rotary_pos_emb,
+                             )
         if isinstance(layer_output, tuple):
             hidden_states = layer_output[0]
         else:
