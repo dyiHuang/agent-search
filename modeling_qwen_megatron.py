@@ -26,6 +26,9 @@ from transformers import Qwen2ForCausalLM
 from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding
 from transformers.activations import ACT2FN
 
+from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
+from transformers.cache_utils import Cache, DynamicCache
+
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
 
@@ -864,7 +867,8 @@ class Qwen2MegatronModel(MegatronModule):
             for i, _ in enumerate(lm_output):
                 output = lm_output[i]
                 if output is not None:
-                    utils.print_rank_0(f"  输出{i}: 形状={output.shape}, mean={output.mean():.6f}, std={output.std():.6f}")
+                    utils.print_rank_0(
+                        f"  输出{i}: 形状={output.shape}, mean={output.mean():.6f}, std={output.std():.6f}")
             # 通常第一个元素是logits
             logits = lm_output[0]
         else:
@@ -1285,24 +1289,28 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         diffs = utils.find_tensor_diff(hf_model.model.layers[i].input_layernorm.weight,
                                        model.layers[i].input_layernorm.weight)
         utils.print_rank_0(f"model.layers[{i}].input_layernorm.weight：{diffs}")
-        hf_qkv = torch.cat([hf_model.model.layers[i].self_attn.q_proj.weight, hf_model.model.layers[i].self_attn.k_proj.weight,
-                            hf_model.model.layers[i].self_attn.v_proj.weight],
-                           dim=0)
+        hf_qkv = torch.cat(
+            [hf_model.model.layers[i].self_attn.q_proj.weight, hf_model.model.layers[i].self_attn.k_proj.weight,
+             hf_model.model.layers[i].self_attn.v_proj.weight],
+            dim=0)
         diffs = utils.find_tensor_diff(hf_qkv, model.layers[i].self_attention.linear_qkv.weight)
         utils.print_rank_0(f"model.layers[{i}].self_attention.linear_qkv.weight差异位置：{diffs}")
-        hf_qkv_bias = torch.cat([hf_model.model.layers[i].self_attn.q_proj.bias, hf_model.model.layers[i].self_attn.k_proj.bias,
-                            hf_model.model.layers[i].self_attn.v_proj.bias],
-                           dim=0)
+        hf_qkv_bias = torch.cat(
+            [hf_model.model.layers[i].self_attn.q_proj.bias, hf_model.model.layers[i].self_attn.k_proj.bias,
+             hf_model.model.layers[i].self_attn.v_proj.bias],
+            dim=0)
         diffs = utils.find_tensor_diff(hf_qkv_bias, model.layers[i].self_attention.linear_qkv.bias)
         utils.print_rank_0(f"model.layers[{i}].self_attention.linear_qkv.bias差异位置：{diffs}")
-        diffs = utils.find_tensor_diff(hf_model.model.layers[i].self_attn.o_proj.weight, model.layers[i].self_attention.linear_proj.weight)
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].self_attn.o_proj.weight,
+                                       model.layers[i].self_attention.linear_proj.weight)
         utils.print_rank_0(f"model.layers[{i}].self_attention.linear_proj.bias：{diffs}")
         linear_fc1 = torch.cat(
             [hf_model.model.layers[i].mlp.gate_proj.weight, hf_model.model.layers[i].mlp.up_proj.weight],
             dim=0)
         diffs = utils.find_tensor_diff(linear_fc1, model.layers[i].mlp.linear_fc1.weight)
         utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc1.weight：{diffs}")
-        diffs = utils.find_tensor_diff(hf_model.model.layers[i].mlp.down_proj.weight, model.layers[i].mlp.linear_fc2.weight)
+        diffs = utils.find_tensor_diff(hf_model.model.layers[i].mlp.down_proj.weight,
+                                       model.layers[i].mlp.linear_fc2.weight)
         utils.print_rank_0(f"model.layers[{i}].mlp.linear_fc2.weight：{diffs}")
         diffs = utils.find_tensor_diff(hf_model.model.layers[i].post_attention_layernorm.weight,
                                        model.layers[i].pre_mlp_layernorm.weight)
@@ -1313,6 +1321,8 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     if not is_critic:
         diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
         utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
+
+    run_comprehensive_debug(hf_model, tokenizer)
     return model
 
 
@@ -1323,3 +1333,284 @@ def get_params_dtype(config):
     if config.deepspeed.fp16.enabled:
         params_dtype = torch.float16
     return params_dtype
+
+
+def detailed_forward_debug(self, input_ids, attention_mask=None):
+    """详细的前向传播调试"""
+    utils.print_rank_0("=== hf_model 详细前向传播调试开始 ===")
+
+    # 原始输入
+    utils.print_rank_0(f"输入形状: {input_ids.shape}")
+    utils.print_rank_0(f"输入token: {input_ids[0].cpu().numpy()}")
+
+    # 嵌入层
+    hidden_states = self.model.embed_tokens(input_ids)
+    utils.print_rank_0(
+        f"嵌入层输出 - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+
+    # 检查Rotary Embedding
+    use_cache: Optional[bool] = None
+    cache_position: Optional[torch.LongTensor] = None
+    past_key_values: Optional[Cache] = None
+    position_ids: Optional[torch.LongTensor] = None
+    if use_cache and past_key_values is None:
+        past_key_values = DynamicCache(config=self.model.config)
+
+    if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
+        )
+
+    if position_ids is None:
+        position_ids = cache_position.unsqueeze(0)
+
+    cos, sin = self.model.rotary_emb(hidden_states, position_ids)
+    utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+    utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+    cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
+
+    rotary_pos_emb = cos_sin, cos_sin
+    # It may already have been prepared by e.g. `generate`
+    if not isinstance(causal_mask_mapping := attention_mask, dict):
+        # Prepare mask arguments
+        mask_kwargs = {
+            "config": self.model.config,
+            "input_embeds": hidden_states,
+            "attention_mask": attention_mask,
+            "cache_position": None,
+            "past_key_values": None,
+            "position_ids": position_ids,
+        }
+        # Create the masks
+        causal_mask_mapping = {
+            "full_attention": create_causal_mask(**mask_kwargs),
+        }
+
+    # 逐层检查Transformer
+    for layer_idx, layer in enumerate(self.model.layers):
+        utils.print_rank_0(f"\n--- 第{layer_idx}层 ---")
+
+        # 输入统计
+        input_mean = hidden_states.mean().item()
+        input_std = hidden_states.std().item()
+        utils.print_rank_0(f"输入 - 均值: {input_mean:.6f}, 标准差: {input_std:.6f}")
+
+        # 层前向传播
+        layer_output = layer(
+            hidden_states,
+            attention_mask=causal_mask_mapping[layer.attention_type],
+            position_ids=position_ids,
+            past_key_values=None,
+            use_cache=True,
+            cache_position=None,
+            position_embeddings=rotary_pos_emb,
+            # **kwargs,
+        )
+
+        # 处理输出（可能是tuple）
+        if isinstance(layer_output, tuple):
+            utils.print_rank_0(f"层输出是tuple，长度: {len(layer_output)}")
+            hidden_states = layer_output[0]
+            if len(layer_output) > 1:
+                utils.print_rank_0(
+                    f"额外输出: {[x.shape if hasattr(x, 'shape') else type(x) for x in layer_output[1:]]}")
+        else:
+            hidden_states = layer_output
+
+        # 输出统计
+        output_mean = hidden_states.mean().item()
+        output_std = hidden_states.std().item()
+        utils.print_rank_0(f"输出 - 均值: {output_mean:.6f}, 标准差: {output_std:.6f}")
+
+        # 检查变化
+        change = abs(output_mean - input_mean)
+        utils.print_rank_0(f"均值变化: {change:.6f}")
+
+        # 检查NaN/Inf
+        if torch.isnan(hidden_states).any():
+            utils.print_rank_0(f"⚠️  第{layer_idx}层输出包含NaN!")
+        if torch.isinf(hidden_states).any():
+            utils.print_rank_0(f"⚠️  第{layer_idx}层输出包含Inf!")
+
+        # 只检查前3层，避免输出过多
+        if layer_idx >= 2:
+            utils.print_rank_0("... (跳过后续层详细输出)")
+            break
+
+    # 最终层
+    if self.model.norm:
+        hidden_states = self.model.norm(hidden_states)
+        utils.print_rank_0(f"最终归一化 - 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+
+    # LM Head
+    hidden_states = self.lm_head(hidden_states)
+    if isinstance(hidden_states, tuple):
+        utils.print_rank_0(f"lm_head输出是tuple，长度: {len(hidden_states)}")
+        hidden_states = hidden_states[0]
+        if len(hidden_states) > 1:
+            utils.print_rank_0(
+                f"lm_head额外输出: {[x.shape if hasattr(x, 'shape') else type(x) for x in hidden_states[1:]]}")
+    else:
+        hidden_states = hidden_states
+    logits = hidden_states
+    utils.print_rank_0(f"最终logits - 形状: {logits.shape}, 均值: {logits.mean():.6f}, 标准差: {logits.std():.6f}")
+
+    # 检查logits的合理性
+    top5_values, top5_indices = torch.topk(logits[0, -1], 5)
+    utils.print_rank_0(f"最后一个token的top-5 logits:")
+    for i, (value, idx) in enumerate(zip(top5_values, top5_indices)):
+        utils.print_rank_0(f"  {i + 1}. token {idx.item()}: {value.item():.3f}")
+
+    return logits
+
+
+def run_comprehensive_debug(self, tokenizer):
+    """运行全面的调试"""
+    utils.print_rank_0("🚀 hf_model 开始全面调试...")
+
+    # 使用固定的简单输入
+    test_prompt = "Hello"
+    if tokenizer is not None:
+        input_ids = tokenizer.encode(test_prompt, return_tensors="pt").to('cuda')
+    else:
+        # 如果没有tokenizer，使用简单数字
+        input_ids = torch.tensor([[1, 2, 3]], device='cuda')
+
+    utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+
+    # 1. 详细前向传播
+    utils.print_rank_0("\n" + "=" * 50)
+    utils.print_rank_0("1. 详细前向传播检查")
+    utils.print_rank_0("=" * 50)
+    logits = detailed_forward_debug(self, input_ids)
+
+    # # 2. 生成过程采样检查
+    # utils.print_rank_0("\n" + "=" * 50)
+    # utils.print_rank_0("2. 生成过程采样检查")
+    # utils.print_rank_0("=" * 50)
+    # generated = self.debug_generation_sampling(input_ids)
+
+    # 3. 验证最终输出
+    # if tokenizer is not None:
+    #     generated_text = tokenizer.decode(generated[0], skip_special_tokens=True)
+    #     utils.print_rank_0(f"\n最终生成文本: '{generated_text}'")
+    # else:
+    #     utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
+
+    # # 运行这些调试函数来定位具体问题
+    # self.debug_attention_mechanism(input_ids)
+    # self.debug_residual_connections(input_ids)
+    # self.debug_lm_head_output(input_ids)
+
+    # 运行这些调试来确认问题
+    debug_mlp_implementation(self, input_ids)
+    # self.check_mlp_weights(layer_idx=2)
+
+    utils.print_rank_0("✅ hf_model 全面调试完成")
+
+
+def debug_mlp_implementation(self, input_ids):
+    """详细调试MLP实现"""
+    utils.print_rank_0("=== MLP实现详细调试 ===")
+
+    hidden_states = self.model.embed_tokens(input_ids)
+    attention_mask: Optional[torch.Tensor] = None
+    # 检查Rotary Embedding
+    use_cache: Optional[bool] = None
+    cache_position: Optional[torch.LongTensor] = None
+    past_key_values: Optional[Cache] = None
+    position_ids: Optional[torch.LongTensor] = None
+    if use_cache and past_key_values is None:
+        past_key_values = DynamicCache(config=self.model.config)
+
+    if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
+        )
+
+    if position_ids is None:
+        position_ids = cache_position.unsqueeze(0)
+
+    cos, sin = self.model.rotary_emb(hidden_states, position_ids)
+    utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+    utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+    cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
+
+    rotary_pos_emb = cos_sin, cos_sin
+    # It may already have been prepared by e.g. `generate`
+    if not isinstance(causal_mask_mapping := attention_mask, dict):
+        # Prepare mask arguments
+        mask_kwargs = {
+            "config": self.model.config,
+            "input_embeds": hidden_states,
+            "attention_mask": attention_mask,
+            "cache_position": None,
+            "past_key_values": None,
+            "position_ids": position_ids,
+        }
+        # Create the masks
+        causal_mask_mapping = {
+            "full_attention": create_causal_mask(**mask_kwargs),
+        }
+
+    # 只运行到第2层
+    for layer_idx in range(3):
+        layer = self.model.layers[layer_idx]
+
+        # 运行到MLP输入
+        attention_output = layer.self_attn(hidden_states=hidden_states,
+                                           attention_mask=attention_mask,
+                                           position_ids=position_ids,
+                                           past_key_values=past_key_values,
+                                           use_cache=use_cache,
+                                           cache_position=cache_position,
+                                           position_embeddings=rotary_pos_emb)
+        if isinstance(attention_output, tuple):
+            attention_output = attention_output[0]
+        residual1 = hidden_states + attention_output
+        mlp_input = layer.post_attention_layernorm(residual1)
+
+        if layer_idx == 2:  # 重点调试第2层
+            utils.print_rank_0(f"\n--- 第{layer_idx}层MLP详细调试 ---")
+            utils.print_rank_0(f"MLP输入: mean={mlp_input.mean():.6f}, std={mlp_input.std():.6f}")
+
+            mlp = layer.mlp
+            # 检查MLP各组件
+            utils.print_rank_0(f"MLP类型: {type(mlp)}")
+            utils.print_rank_0(f"MLP配置: gated_linear_unit={mlp.config.gated_linear_unit}")
+
+            # 2. 分为gate和up
+            gate = mlp.gate_proj(mlp_input)
+            up = mlp.up_proj(mlp_input)
+            utils.print_rank_0(f"gate部分: shape={gate.shape}, mean={gate.mean():.6f}, std={gate.std():.6f}")
+            utils.print_rank_0(f"up部分: shape={up.shape}, mean={up.mean():.6f}, std={up.std():.6f}")
+
+            # 3. 激活函数
+            activated_gate = mlp.act_fn(gate)
+            utils.print_rank_0(f"SiLU(gate): mean={activated_gate.mean():.6f}, std={activated_gate.std():.6f}")
+
+            # 4. 门控乘法
+            intermediate = activated_gate * up
+            utils.print_rank_0(f"gate * up: mean={intermediate.mean():.6f}, std={intermediate.std():.6f}")
+
+            # 5. linear_fc2
+            fc2_output = mlp.down_proj(intermediate)
+            utils.print_rank_0(f"linear_fc2输出: mean={fc2_output.mean():.6f}, std={fc2_output.std():.6f}")
+
+            # 6. dropout (如果有)
+            if hasattr(mlp, 'dropout') and mlp.dropout.p > 0:
+                final_output = mlp.dropout(fc2_output)
+                utils.print_rank_0(f"Dropout后: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
+            else:
+                final_output = fc2_output
+
+            utils.print_rank_0(f"MLP最终输出: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
+
+        # 完成这一层
+        layer_output = layer(hidden_states)
+        if isinstance(layer_output, tuple):
+            hidden_states = layer_output[0]
+        else:
+            hidden_states = layer_output
