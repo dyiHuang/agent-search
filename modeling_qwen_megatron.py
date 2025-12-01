@@ -48,7 +48,6 @@ class Qwen2DotProductAttention(DotProductAttention):
                          cp_comm_type, pg_collection)
 
         self.num_key_value_groups = self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-        self.config._attn_implementation = 'sdpa'
 
     def forward(self,
                 query: Tensor,
@@ -179,6 +178,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
                 },
             ),
             layer_number=layer_number)
+        qwen_config._attn_implementation = 'sdpa'
         self.self_attention.core_attention.qwen_config = qwen_config
         self.attention_type = qwen_config.layer_types[layer_number-1]
 
