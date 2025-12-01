@@ -1357,6 +1357,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     # 注：需手动映射参数名（如 'embed_tokens.weight' -> 'embedding.weight'）
     hf_model = Qwen2ForCausalLM.from_pretrained(qwen_model_path, dtype=params_dtype).cuda()
     utils.print_rank_0(hf_model)
+    utils.print_rank_0(f"hf_model qwen2 config: {hf_model.config}")
 
     # response = tokenizer.decode(hf_model.generate(inputs=tokenizer.encode("Hello World!", return_tensors="pt").to(hf_model.device),
     #                                               max_length=512,
@@ -1373,9 +1374,9 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], qwen_config,
                                                    megatron_config.params_dtype)
     else:
-        model = Qwen2MegatronCritic(config, qwen_config, megatron_config)
+        model = Qwen2MegatronCritic(config, hf_model.config, megatron_config)
         model.cuda()
-        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], qwen_config,
+        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
                                                    megatron_config.params_dtype, is_value_model=is_critic)
 
     # 集成LoRa（仅对 Attention 层的 proj 层添加 LoRa）
