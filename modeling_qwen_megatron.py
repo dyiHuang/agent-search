@@ -1558,6 +1558,7 @@ def debug_mlp_implementation(self, input_ids):
     # 只运行到第2层
     for layer_idx in range(3):
         layer = self.model.layers[layer_idx]
+        hidden_states = self.input_layernorm(hidden_states)
 
         # 运行到MLP输入
         attention_output = layer.self_attn(hidden_states=hidden_states,
