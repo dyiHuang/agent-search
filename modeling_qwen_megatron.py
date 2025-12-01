@@ -1543,7 +1543,7 @@ def run_comprehensive_debug(self, tokenizer):
     #     utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
 
     # # 运行这些调试函数来定位具体问题
-    # self.debug_attention_mechanism(input_ids)
+    self.debug_attention_mechanism(input_ids)
     # self.debug_residual_connections(input_ids)
     # self.debug_lm_head_output(input_ids)
 
@@ -1661,6 +1661,86 @@ def debug_mlp_implementation(self, input_ids):
                              cache_position=cache_position,
                              position_embeddings=rotary_pos_emb,
                              )
+        if isinstance(layer_output, tuple):
+            hidden_states = layer_output[0]
+        else:
+            hidden_states = layer_output
+
+
+def debug_attention_mechanism(self, input_ids):
+    """调试注意力机制"""
+    utils.print_rank_0("=== 注意力机制调试 ===")
+
+    hidden_states = self.model.embed_tokens(input_ids)
+    attention_mask: Optional[torch.Tensor] = None
+    # 检查Rotary Embedding
+    use_cache: Optional[bool] = None
+    cache_position: Optional[torch.LongTensor] = None
+    past_key_values: Optional[Cache] = None
+    position_ids: Optional[torch.LongTensor] = None
+    if use_cache and past_key_values is None:
+        past_key_values = DynamicCache(config=self.model.config)
+
+    if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
+        )
+
+    if position_ids is None:
+        position_ids = cache_position.unsqueeze(0)
+
+    rotary_pos_emb = self.model.rotary_emb(hidden_states, position_ids)
+    cos, sin = rotary_pos_emb
+    utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
+    utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
+
+    # It may already have been prepared by e.g. `generate`
+    if not isinstance(causal_mask_mapping := attention_mask, dict):
+        # Prepare mask arguments
+        mask_kwargs = {
+            "config": self.model.config,
+            "input_embeds": hidden_states,
+            "attention_mask": attention_mask,
+            "cache_position": cache_position,
+            "past_key_values": past_key_values,
+            "position_ids": position_ids,
+        }
+        # Create the masks
+        causal_mask_mapping = {
+            "full_attention": create_causal_mask(**mask_kwargs),
+        }
+
+    for layer_idx in range(3):  # 只检查前3层
+        utils.print_rank_0(f"\n--- 第{layer_idx}层注意力调试 ---")
+        layer = self.model.layers[layer_idx]
+
+        # 检查输入
+        input_stats = f"输入: mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}"
+
+        # 注意力层前向传播
+        attention_output = layer.self_attn(hidden_states=hidden_states,
+                                           position_embeddings=rotary_pos_emb,
+                                           attention_mask=causal_mask_mapping[layer.attention_type],
+                                           past_key_values=past_key_values,
+                                           cache_position=cache_position,
+                                           use_cache=use_cache,
+                                           position_ids=position_ids,
+                                           )
+
+        if isinstance(attention_output, tuple):
+            attention_output = attention_output[0]
+
+        utils.print_rank_0(
+            f"{input_stats} -> 注意力输出: mean={attention_output.mean():.6f}, std={attention_output.std():.6f}")
+
+        # 检查注意力权重
+        if hasattr(layer.self_attn.core_attention, 'attention_scores'):
+            scores = layer.self_attn.core_attention.attention_scores
+            utils.print_rank_0(f"注意力分数范围: [{scores.min():.3f}, {scores.max():.3f}]")
+
+        # 继续完整层的前向传播
+        layer_output = layer(hidden_states)
         if isinstance(layer_output, tuple):
             hidden_states = layer_output[0]
         else:
