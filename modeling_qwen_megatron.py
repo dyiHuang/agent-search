@@ -45,6 +45,7 @@ from megatron.core.utils import (
     is_te_min_version,
     get_pg_rank,
     nvtx_range_pop,
+    make_viewless_tensor,
     nvtx_range_push,
 )
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -511,6 +512,78 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
             context = attention_output_with_bias["context"]
 
         return hidden_states, context
+
+    def _forward_mlp(self, hidden_states, inference_context=None):
+        """
+        Perform a forward pass through the feed-forward layer.
+
+        Args:
+            hidden_states (Tensor): Transformed hidden states before the MLP layernorm.
+
+        Returns:
+            output (Tensor): Transformed hidden states of shape [s, b, h].
+        """
+
+        # Residual connection.
+        residual = hidden_states
+
+        # Optional Layer norm post the cross-attention.
+        if self.recompute_pre_mlp_layernorm:
+            self.pre_mlp_norm_checkpoint = tensor_parallel.CheckpointWithoutOutput()
+            pre_mlp_layernorm_output = self.pre_mlp_norm_checkpoint.checkpoint(
+                self.pre_mlp_layernorm, hidden_states
+            )
+        else:
+            pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
+
+        nvtx_range_push(suffix="mlp")
+        # Potentially chunk the MLP computation during prefill to minimize the peak activation size
+
+        if self.recompute_mlp:
+            if self.config.fp8:
+                # import here to avoid circular import
+                from megatron.core.extensions.transformer_engine import te_checkpoint
+
+                mlp_output_with_bias = te_checkpoint(
+                    self.mlp,
+                    False,
+                    tensor_parallel.random.get_cuda_rng_tracker,
+                    self.pg_collection.tp,
+                    pre_mlp_layernorm_output,
+                )
+            else:
+                mlp_output_with_bias = tensor_parallel.checkpoint(
+                    self.mlp, False, pre_mlp_layernorm_output
+                )
+
+        else:
+            mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output)
+
+        if self.recompute_pre_mlp_layernorm:
+            # discard the output of the pre-mlp layernorm and register the recompute
+            # as a gradient hook of mlp_output_with_bias[0]
+            self.pre_mlp_norm_checkpoint.discard_output_and_register_recompute(
+                mlp_output_with_bias[0]
+            )
+        nvtx_range_pop(suffix="mlp")
+
+        # TODO: could we move `bias_dropout_add_exec_handler` itself
+        # inside the module provided in the `bias_dropout_add_spec` module?
+        nvtx_range_push(suffix="mlp_bda")
+        hidden_states = mlp_output_with_bias[0] + residual
+        nvtx_range_pop(suffix="mlp_bda")
+
+        # # Jit compiled function creates 'view' tensor. This tensor
+        # # potentially gets saved in the MPU checkpoint function context,
+        # # which rejects view tensors. While making a viewless tensor here
+        # # won't result in memory savings (like the data loader, or
+        # # p2p_communication), it serves to document the origin of this
+        # # 'view' tensor.
+        # output = make_viewless_tensor(
+        #     inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
+        # )
+
+        return hidden_states
 
 class Qwen2PreTrainedModel(PreTrainedModel):
     config: Qwen2Config
