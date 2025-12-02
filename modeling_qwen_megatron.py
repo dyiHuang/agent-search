@@ -1306,10 +1306,10 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
 
         # 1. 详细前向传播
-        utils.print_rank_0("\n" + "=" * 50)
-        utils.print_rank_0("1. 详细前向传播检查")
-        utils.print_rank_0("=" * 50)
-        logits = self.detailed_forward_debug(input_ids)
+        # utils.print_rank_0("\n" + "=" * 50)
+        # utils.print_rank_0("1. 详细前向传播检查")
+        # utils.print_rank_0("=" * 50)
+        # logits = self.detailed_forward_debug(input_ids)
 
         # 2. 生成过程采样检查
         utils.print_rank_0("\n" + "=" * 50)
@@ -1325,13 +1325,13 @@ class Qwen2MegatronModel(MegatronModule):
             utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
 
         # 运行这些调试函数来定位具体问题
-        self.debug_attention_mechanism(input_ids)
-        self.debug_residual_connections(input_ids)
-        self.debug_lm_head_output(input_ids)
+        # self.debug_attention_mechanism(input_ids)
+        # self.debug_residual_connections(input_ids)
+        # self.debug_lm_head_output(input_ids)
 
         # 运行这些调试来确认问题
-        self.debug_mlp_implementation(input_ids)
-        self.check_mlp_weights(layer_idx=2)
+        # self.debug_mlp_implementation(input_ids)
+        # self.check_mlp_weights(layer_idx=2)
 
         utils.print_rank_0("✅ 全面调试完成")
 
@@ -1440,7 +1440,9 @@ class Qwen2MegatronModel(MegatronModule):
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
         for layer in self.layers:
-            layer_output = layer(hidden_states, attention_mask, rotary_pos_emb)
+            layer_output = layer(hidden_states,
+                                 attention_mask=attention_mask,
+                                 rotary_pos_emb=rotary_pos_emb)
             if isinstance(layer_output, tuple):
                 hidden_states = layer_output[0]
             else:
