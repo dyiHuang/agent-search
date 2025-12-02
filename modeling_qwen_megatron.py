@@ -225,6 +225,11 @@ class Qwen2MegatronMLP(MLP):
         # # Qwen2.5 用SwiGLU， 替换 Megatron 默认 GELU
         # self.activation_func = nn.SiLU  # SwiLU = SilU + 点积
 
+    def forward(self, hidden_states, per_token_scale=None):
+        output, output_bias = super().forward(hidden_states, per_token_scale=per_token_scale)
+        utils.print_rank_0(f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
+        return output, output_bias
+
 
 @use_kernel_forward_from_hub("RMSNorm")
 class Qwen2RMSNorm(nn.Module):
