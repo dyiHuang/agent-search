@@ -395,7 +395,7 @@ class Qwen2RMSNorm(nn.Module):
         Qwen2RMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.weight = nn.Parameter(torch.ones(hidden_size, dtype=config.params_dtype))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
