@@ -34,7 +34,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
-from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
 
 import core_algos
 import qwen_load
@@ -185,8 +185,8 @@ class Qwen2MegatronAttention(SelfAttention):
         """
 
         # For self attention we just duplicate the rotary_pos_emb if it isn't already
-        if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
-            rotary_pos_emb = (rotary_pos_emb,) * 2
+        # if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
+        #     rotary_pos_emb = (rotary_pos_emb,) * 2
 
         # =====================
         # Query, Key, and Value
@@ -838,10 +838,7 @@ class Qwen2MegatronModel(MegatronModule):
         # seq_len = hidden_states.size(0)
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-        cos, sin = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
-        # cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
-
-        rotary_pos_emb = cos, sin
+        rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
