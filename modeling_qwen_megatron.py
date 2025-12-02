@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Optional, Union, List, Dict, Callable, Any
+from typing import Optional, Union, List, Dict, Callable, Any, Tuple
 
 import torch
 from torch import Tensor
@@ -42,10 +42,12 @@ from tensordict import TensorDict
 from megatron.core.utils import (
     get_tensor_model_parallel_group_if_none,
     deprecate_inference_params,
+    is_te_min_version,
     get_pg_rank,
     nvtx_range_pop,
     nvtx_range_push,
 )
+from megatron.core.inference.contexts import BaseInferenceContext
 
 
 class Qwen2DotProductAttention(DotProductAttention):
@@ -221,6 +223,131 @@ class Qwen2MegatronAttention(SelfAttention):
             self.run_realtime_tests()
 
         return query, key, value
+
+    def _adjust_key_value_for_inference(
+        self,
+        inference_context: BaseInferenceContext,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        rotary_pos_emb: Tensor,
+        rotary_pos_cos: Optional[Tensor] = None,
+        rotary_pos_sin: Optional[Tensor] = None,
+        rotary_pos_cos_sin: Optional[Tensor] = None,
+        sequence_len_offset: Optional[int] = None,
+        *,
+        inference_params: Optional[BaseInferenceContext] = None,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """
+        Saves the generated key and value tensors to the end of the buffers in inference_context.
+        Returns the full size keys and values from the provided inference_context, as well as
+        adjusted rotary_pos_emb.
+
+        Args:
+            query (Tensor): Query tensor.
+            key (Tensor): Key tensor.
+            value (Tensor): Value tensor.
+            rotary_pos_emb (Optional[Union[Tensor, Tuple[Tensor, Tensor]]]): Rotary
+                embedding tensor(s).
+            rotary_pos_cos (Optional[Tensor]): Rotary embedding cosine.
+            rotary_pos_sin (Optional[Tensor]): Rotary embedding sine.
+            rotary_pos_cos_sin (Optional[Tensor]): Combined rotary embedding cosine and sine.
+            Currently used exclusively for inference with dynamic batching and flashinfer RoPE.
+            sequence_len_offset (Optional[int]): Sequence length offset used for
+                inference CUDA graphs.
+
+        Return:
+            Tuple of: query, key, value, rotary_pos_emb, attn_mask_type, block_table.
+        """
+
+        inference_context = deprecate_inference_params(inference_context, inference_params)
+
+        attn_mask_type = self.attn_mask_type
+        if inference_context is None:
+            print(f"_adjust_key_value_for_inference: inference_context is None")
+            return query, key, value, rotary_pos_emb, attn_mask_type, None
+
+        # =================================================
+        # Pre-allocate memory for key-values for inference.
+        # =================================================
+        if inference_context.is_static_batching():
+            if self.layer_number not in inference_context.key_value_memory_dict:
+                inf_max_seq_length = inference_context.max_sequence_length
+                inf_max_batch_size = inference_context.max_batch_size
+                inference_key_memory = self._allocate_memory(
+                    inf_max_seq_length, inf_max_batch_size, self.key_hidden_size, key.dtype
+                )
+                inference_value_memory = self._allocate_memory(
+                    inf_max_seq_length, inf_max_batch_size, self.val_hidden_size, value.dtype
+                )
+                inference_context.key_value_memory_dict[self.layer_number] = (
+                    inference_key_memory,
+                    inference_value_memory,
+                )
+            else:
+                # Get the pre-allocated buffers for this layer
+                inference_key_memory, inference_value_memory = (
+                    inference_context.key_value_memory_dict[self.layer_number]
+                )
+
+        if (
+            not inference_context.is_static_batching() or inference_context.sequence_len_offset > 0
+        ) and (not self.training or not is_te_min_version("2.2.0")):
+            # This should mean that we are past the prompt forward_step
+            # and so we need to turn off masking
+            # Note: in ModelOpt, we may use inference_context for speculative decoding
+            # in training. In that case, we do not want to turn off masking as we need
+            # customized attention mask for speculative decoding.
+
+            attn_mask_type = AttnMaskType.no_mask
+
+        if inference_context.is_static_batching():
+            batch_start = inference_context.batch_size_offset
+            batch_end = batch_start + key.size(1)
+            assert batch_end <= inference_key_memory.size(1)
+            sequence_start = inference_context.sequence_len_offset
+            sequence_end = sequence_start + key.size(0)
+            assert sequence_end <= inference_key_memory.size(0), (
+                "Current sequence length is longer than expected maximum sequence length! "
+                "Increase inference_max_seq_length."
+            )
+
+        # Adjust rotary embeddings.
+        # if rotary_pos_emb is not None:
+        #     q_pos_emb, k_pos_emb = rotary_pos_emb
+        #     if inference_context.is_static_batching():
+        #         q_pos_emb = q_pos_emb[sequence_start:sequence_end, :, :, :]
+        #         k_pos_emb = k_pos_emb[:sequence_end, :, :, :]
+        #     else:
+        #         pass
+        #     rotary_pos_emb = (q_pos_emb, k_pos_emb)
+
+        block_table = None
+        if inference_context.is_static_batching():
+            # Copy key and values.
+            inference_key_memory[sequence_start:sequence_end, batch_start:batch_end, ...] = key
+            inference_value_memory[sequence_start:sequence_end, batch_start:batch_end, ...] = value
+            # key = inference_key_memory[:sequence_end, batch_start:batch_end, ...]
+            # value = inference_value_memory[:sequence_end, batch_start:batch_end, ...]
+        else:
+            # Apply rotary embeddings before appending KV cache.
+            # if inference_context.use_flashinfer_fused_rope and (rotary_pos_cos_sin is not None):
+            #     query, key = inference_context.apply_fused_qk_rotary_emb(
+            #         query, key, rotary_pos_cos_sin, self.config
+            #     )
+            # elif rotary_pos_emb is not None:
+            #     q_pos_emb, k_pos_emb = rotary_pos_emb
+            #     key = inference_context.apply_rotary_emb_key(
+            #         key, k_pos_emb, self.config, self.pg_collection.cp
+            #     )
+            #
+            #     rotary_pos_emb = (q_pos_emb, None)  # key rotary emb has been applied
+
+            # Append key/value data tensors to cache.
+            inference_context.append_key_value_cache(self.layer_number, key, value)
+        utils.print_rank_0(f"_adjust_key_value_for_inference key: mean={key.mean():.6f}, std={key.std():.6f}")
+        return query, key, value, rotary_pos_emb, attn_mask_type, block_table
+
 
 
 class Qwen2MegatronMLP(MLP):
