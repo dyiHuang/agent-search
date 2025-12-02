@@ -115,8 +115,8 @@ class Qwen2MegatronAttention(SelfAttention):
                 linear_qkv=tensor_parallel.ColumnParallelLinear,
                 core_attention=Qwen2DotProductAttention,
                 linear_proj=tensor_parallel.RowParallelLinear,
-                q_layernorm=IdentityOp,
-                k_layernorm=IdentityOp,
+                q_layernorm = None,
+                k_layernorm = None,
             ),
             layer_number=layer_number,
             attn_mask_type=attn_mask_type,
@@ -1450,8 +1450,6 @@ def detailed_forward_debug(self, input_ids, attention_mask=None):
 
     # 嵌入层
     hidden_states = self.model.embed_tokens(input_ids)
-    utils.print_rank_0(
-        f"嵌入层输出 - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
 
     # 检查Rotary Embedding
     use_cache: Optional[bool] = None
