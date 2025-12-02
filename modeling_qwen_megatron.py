@@ -190,13 +190,13 @@ class Qwen2MegatronAttention(SelfAttention):
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.weight, p_split_arg_list, dim=0)
 
         # print(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        # print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
         # print(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.bias, p_split_arg_list, dim=0)
 
         # print(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        # print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
         # print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         # # Return unsplit mixed_qkv and split_arg_list
