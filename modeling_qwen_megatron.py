@@ -1089,9 +1089,10 @@ class Qwen2MegatronModel(MegatronModule):
         # 只运行到第2层
         for layer_idx in range(3):
             layer = self.layers[layer_idx]
+            input_layernorm_output = layer.input_layernorm(hidden_states)
 
             # 运行到MLP输入
-            attention_output = layer.self_attention(hidden_states, attention_mask, rotary_pos_emb)
+            attention_output = layer.self_attention(input_layernorm_output, attention_mask, rotary_pos_emb)
             if isinstance(attention_output, tuple):
                 attention_output = attention_output[0]
             residual1 = hidden_states + attention_output
@@ -1748,10 +1749,10 @@ def debug_mlp_implementation(self, input_ids):
     # 只运行到第2层
     for layer_idx in range(3):
         layer = self.model.layers[layer_idx]
-        hidden_states = layer.input_layernorm(hidden_states)
+        input_layernorm_output = layer.input_layernorm(hidden_states)
 
         # 运行到MLP输入
-        attention_output = layer.self_attn(hidden_states=hidden_states,
+        attention_output = layer.self_attn(hidden_states=input_layernorm_output,
                                            position_embeddings=rotary_pos_emb,
                                            attention_mask=causal_mask_mapping[layer.attention_type],
                                            past_key_values=past_key_values,
