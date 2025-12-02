@@ -220,11 +220,7 @@ def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float =
 
     # 3. 逐元素比较（区分整数和浮点数）
     if torch.is_floating_point(tensor1):
-        # 浮点数用 allclose 处理精度问题
-        equal_mask = torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol)
-        if equal_mask:
-            return []
-        # 获取不相等的掩码
+        # 浮点数/复数用isclose处理精度
         diff_mask = ~torch.isclose(tensor1, tensor2, atol=atol, rtol=rtol)
     else:
         # 整数直接用相等判断
@@ -233,10 +229,9 @@ def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float =
             return []
         diff_mask = tensor1 != tensor2
 
-    # 4. 提取不相等元素的位置（返回格式为 (dim0, dim1, ..., dimN) 的元组列表）
+    # 5. 提取差异位置
+    if not diff_mask.any():
+        return []
     diff_indices = torch.nonzero(diff_mask, as_tuple=False).tolist()
-    # 转换为元组格式便于阅读
-    diff_positions = [tuple(idx) for idx in diff_indices]
-
-    return diff_positions
+    return [tuple(idx) for idx in diff_indices]
 
