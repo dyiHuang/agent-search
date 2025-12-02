@@ -39,6 +39,12 @@ import core_algos
 import qwen_load
 from tensordict import TensorDict
 
+from megatron.core.utils import (
+    get_tensor_model_parallel_group_if_none,
+    nvtx_range_pop,
+    nvtx_range_push,
+)
+
 
 class Qwen2DotProductAttention(DotProductAttention):
     def __init__(self, config: TransformerConfig, layer_number: int, attn_mask_type: AttnMaskType, attention_type: str,
@@ -227,7 +233,25 @@ class Qwen2MegatronMLP(MLP):
         # self.activation_func = nn.SiLU  # SwiLU = SilU + 点积
 
     def forward(self, hidden_states, per_token_scale=None):
-        output, output_bias = super().forward(hidden_states, per_token_scale=per_token_scale)
+        """Perform the forward pass through the MLP block."""
+        # [s, b, 4 * h/p]
+        nvtx_range_push(suffix="linear_fc1")
+        intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
+        nvtx_range_pop(suffix="linear_fc1")
+
+        nvtx_range_push(suffix="activation")
+        if self.config.gated_linear_unit:
+            x_glu, x_linear = torch.chunk(intermediate_parallel, 2, dim=-1)
+            # [s, b, h]
+            nvtx_range_push(suffix="linear_fc2")
+            output, output_bias = self.linear_fc2(self.config.activation_func(x_glu) * (x_linear))
+            nvtx_range_pop(suffix="linear_fc2")
+        else:
+            nvtx_range_push(suffix="linear_fc2")
+            output, output_bias = self.linear_fc2(self.activation_func(intermediate_parallel))
+            nvtx_range_pop(suffix="linear_fc2")
+        nvtx_range_pop(suffix="activation")
+
         utils.print_rank_0(f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
         return output, output_bias
 
