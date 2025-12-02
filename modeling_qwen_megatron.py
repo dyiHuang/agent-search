@@ -786,13 +786,13 @@ class Qwen2MegatronModel(MegatronModule):
         hidden_states = None
         rotary_pos_emb = None
         if self.pp_rank == 0:
-            ori_input_ids = input_ids
+            # ori_input_ids = input_ids
             # [b, s, h] -> [s, b, h]
-            input_ids = input_ids.transpose(1, 0).contiguous()
+            # input_ids = input_ids.transpose(1, 0).contiguous()
             # 嵌入层（仅 stage 0 有）
             hidden_states = self.embedding(input_ids)
 
-            ori_input_ids.transpose(1, 0)
+            # ori_input_ids.transpose(1, 0)
 
             # 提前处理 only_last_token（减少跨 stage 通信量）
             # if only_last_token:
@@ -808,6 +808,7 @@ class Qwen2MegatronModel(MegatronModule):
         #     # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
         #     attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
+        hidden_states = hidden_states.transpose(0, 1)
         # 检查Rotary Embedding
         use_cache: Optional[bool] = None
         cache_position: Optional[torch.LongTensor] = None
