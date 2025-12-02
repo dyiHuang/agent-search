@@ -209,7 +209,7 @@ class Qwen2MegatronAttention(SelfAttention):
         print(f"Qwen2MegatronAttention sin - 形状: {sin.shape}, mean: [{sin.mean():.6f}, std: {sin.std():.6f}]")
         query = query.transpose(0, 1)
         key = key.transpose(0, 1)
-        query, key = apply_rotary_pos_emb(query, key, cos, sin)
+        query, key = apply_rotary_pos_emb(query, key, cos, sin, unsqueeze_dim=2)
         query = query.transpose(0, 1)
         key = key.transpose(0, 1)
         nvtx_range_pop(suffix="rotary_pos_emb")
