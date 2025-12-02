@@ -839,9 +839,9 @@ class Qwen2MegatronModel(MegatronModule):
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         cos, sin = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
-        cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
+        # cos_sin = torch.cat([cos, sin], dim=-1).contiguous()
 
-        rotary_pos_emb = cos_sin, cos_sin
+        rotary_pos_emb = cos, sin
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
