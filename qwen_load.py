@@ -85,7 +85,8 @@ def _broadcast_tensor(tensor, name, state_dict, mp_group, params_dtype) -> torch
     dist.broadcast(tensor, src=0, group=mp_group)
 
 
-def _broadcast_tp_shard_tensor_vocab(tensor, name, state_dict, mp_group, params_dtype, chunk_dim=0, mutate_func=None) -> torch.Tensor:
+def _broadcast_tp_shard_tensor_vocab(tensor, name, state_dict, mp_group, params_dtype, chunk_dim=0,
+                                     mutate_func=None) -> torch.Tensor:
     """broadcast tensor in tp shards across mp_group"""
     tp_rank = parallel_state.get_tensor_model_parallel_rank()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -131,7 +132,8 @@ def _broadcast_tp_shard_tensor_vocab(tensor, name, state_dict, mp_group, params_
             tensor.data.copy_(sync_tensor)
 
 
-def _broadcast_tp_shard_tensor(tensor, name, state_dict, mp_group, params_dtype, chunk_dim=0, mutate_func=None) -> torch.Tensor:
+def _broadcast_tp_shard_tensor(tensor, name, state_dict, mp_group, params_dtype, chunk_dim=0,
+                               mutate_func=None) -> torch.Tensor:
     """broadcast tensor in tp shards across mp_group"""
     tp_rank = parallel_state.get_tensor_model_parallel_rank()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -176,7 +178,8 @@ def _broadcast_tp_shard_tensor(tensor, name, state_dict, mp_group, params_dtype,
             tensor.data.copy_(sync_tensor)
 
 
-def _broadcast_tp_shard_tensor_gate_up(tensor, gate_name, up_name, state_dict, mp_group, params_dtype, config) -> torch.Tensor:
+def _broadcast_tp_shard_tensor_gate_up(tensor, gate_name, up_name, state_dict, mp_group, params_dtype,
+                                       config) -> torch.Tensor:
     """broadcast tensor in tp shards across mp_group"""
     tp_rank = parallel_state.get_tensor_model_parallel_rank()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -229,7 +232,8 @@ def _broadcast_tp_shard_tensor_gate_up(tensor, gate_name, up_name, state_dict, m
             tensor.data.copy_(sync_tensor)
 
 
-def _broadcast_tp_shard_tensor_qkv(tensor, q_name, k_name, v_name, state_dict, mp_group, params_dtype, config) -> torch.Tensor:
+def _broadcast_tp_shard_tensor_qkv(tensor, q_name, k_name, v_name, state_dict, mp_group, params_dtype,
+                                   config) -> torch.Tensor:
     """broadcast tensor in tp shards across mp_group"""
     tp_rank = parallel_state.get_tensor_model_parallel_rank()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -307,7 +311,8 @@ def _broadcast_tp_shard_tensor_qkv(tensor, q_name, k_name, v_name, state_dict, m
             tensor.data.copy_(sync_tensor)
 
 
-def _broadcast_tp_shard_tensor_qkv_bias(tensor, q_name, k_name, v_name, state_dict, mp_group, params_dtype, config) -> torch.Tensor:
+def _broadcast_tp_shard_tensor_qkv_bias(tensor, q_name, k_name, v_name, state_dict, mp_group, params_dtype,
+                                        config) -> torch.Tensor:
     """broadcast tensor in tp shards across mp_group"""
     tp_rank = parallel_state.get_tensor_model_parallel_rank()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -325,22 +330,22 @@ def _broadcast_tp_shard_tensor_qkv_bias(tensor, q_name, k_name, v_name, state_di
             kv_size_tp = hidden_size_per_head * config.num_key_value_heads // tp_size
             total_size = q_size_tp + 2 * kv_size_tp
             new_weight_qkv_bias = torch.empty(total_size * tp_size,
-                                         dtype=params_dtype,
-                                         device=torch.cuda.current_device())
+                                              dtype=params_dtype,
+                                              device=torch.cuda.current_device())
             for i in range(tp_size):
                 q_part = full_weight_q_bias[i * q_size_tp:(i + 1) * q_size_tp]
                 k_part = full_weight_k_bias[i * kv_size_tp:(i + 1) * kv_size_tp]
                 v_part = full_weight_v_bias[i * kv_size_tp:(i + 1) * kv_size_tp]
                 new_weight_qkv_bias[i * total_size:(i + 1) * total_size].copy_(torch.cat([q_part, k_part, v_part],
-                                                                                    dim=0))
+                                                                                         dim=0))
 
         else:
             q_size_tp = config.hidden_size // tp_size
             kv_size_tp = hidden_size_per_head
             total_size = q_size_tp + 2 * kv_size_tp
             new_weight_qkv_bias = torch.empty(total_size * tp_size,
-                                         dtype=params_dtype,
-                                         device=torch.cuda.current_device())
+                                              dtype=params_dtype,
+                                              device=torch.cuda.current_device())
             for i in range(tp_size):
                 q_part = full_weight_q_bias[i * q_size_tp:(i + 1) * q_size_tp]
                 start_idx = i * config.num_key_value_heads // tp_size * hidden_size_per_head
@@ -348,7 +353,7 @@ def _broadcast_tp_shard_tensor_qkv_bias(tensor, q_name, k_name, v_name, state_di
                 k_part = full_weight_k_bias[start_idx:end_idx]
                 v_part = full_weight_v_bias[start_idx:end_idx]
                 new_weight_qkv_bias[i * total_size:(i + 1) * total_size].copy_(torch.cat([q_part, k_part, v_part],
-                                                                                    dim=0))
+                                                                                         dim=0))
 
         tensor_chunk = torch.chunk(new_weight_qkv_bias, tp_size, dim=0)
         chunk_shape = tensor_chunk[0].shape
@@ -417,7 +422,8 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
         embed_tokens_weight = None
         if pp_rank == 0:
             embed_tokens_weight = qwen_model_module.embedding.weight
-        _broadcast_tp_shard_tensor_vocab(embed_tokens_weight, "model.embed_tokens.weight", state_dict, mp_group, params_dtype)
+        _broadcast_tp_shard_tensor_vocab(embed_tokens_weight, "model.embed_tokens.weight", state_dict, mp_group,
+                                         params_dtype)
 
         # Transformer layers
         # -------------------
@@ -496,7 +502,8 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
             if 'lm_head.weight' in state_dict and state_dict['lm_head.weight'].shape[0] == 1:
                 _broadcast_tensor(qwen_model_module.value_head, "lm_head.weight", state_dict, mp_group, params_dtype)
             elif 'reward_head.weight' in state_dict and state_dict['reward_head.weight'].shape[0] == 1:
-                _broadcast_tensor(qwen_model_module.value_head, "reward_head.weight", state_dict, mp_group, params_dtype)
+                _broadcast_tensor(qwen_model_module.value_head, "reward_head.weight", state_dict, mp_group,
+                                  params_dtype)
                 print('load lm_head from value_head weight')
             else:
                 _broadcast_tensor(None, "lm_head.weight", state_dict, mp_group, params_dtype)
@@ -514,4 +521,3 @@ def load_state_dict_to_megatron_qwen(state_dict, models, config, params_dtype, i
 
     torch.cuda.empty_cache()
     print(f"loading megatron ckpt done, time elapsed {time.time() - start_time}s")
-

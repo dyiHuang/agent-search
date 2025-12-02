@@ -1590,17 +1590,17 @@ def run_comprehensive_debug(self, tokenizer):
     logits = detailed_forward_debug(self, input_ids)
 
     # # 2. 生成过程采样检查
-    # utils.print_rank_0("\n" + "=" * 50)
-    # utils.print_rank_0("2. 生成过程采样检查")
-    # utils.print_rank_0("=" * 50)
-    # generated = self.debug_generation_sampling(input_ids)
+    utils.print_rank_0("\n" + "=" * 50)
+    utils.print_rank_0("2. 生成过程采样检查")
+    utils.print_rank_0("=" * 50)
+    generated = debug_generation_sampling(self, input_ids)
 
     # 3. 验证最终输出
-    # if tokenizer is not None:
-    #     generated_text = tokenizer.decode(generated[0], skip_special_tokens=True)
-    #     utils.print_rank_0(f"\n最终生成文本: '{generated_text}'")
-    # else:
-    #     utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
+    if tokenizer is not None:
+        generated_text = tokenizer.decode(generated[0], skip_special_tokens=True)
+        utils.print_rank_0(f"\n最终生成文本: '{generated_text}'")
+    else:
+        utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
 
     # # 运行这些调试函数来定位具体问题
     debug_attention_mechanism(self, input_ids)
@@ -1812,3 +1812,46 @@ def debug_attention_mechanism(self, input_ids):
             hidden_states = layer_output[0]
         else:
             hidden_states = layer_output
+
+
+def debug_generation_sampling(self, input_ids, num_steps=3):
+    """调试生成过程中的采样"""
+    utils.print_rank_0("=== 生成过程采样调试 ===")
+
+    current_input = input_ids
+    attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+
+    for step in range(num_steps):
+        utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
+
+        # 前向传播获取logits
+        with torch.no_grad():
+            output = self.forward(
+                input_ids=current_input,
+            )
+        logits = output.logits
+        utils.print_rank_0(f"Logits形状: {logits.shape}")
+        utils.print_rank_0(f"Logits范围: [{logits.min():.3f}, {logits.max():.3f}]")
+
+        # 检查logits的分布
+        last_token_logits = logits[:, -1]  # [batch_size, vocab_size]
+        probs = torch.softmax(last_token_logits, dim=-1)
+
+        # 采样前的概率分布
+        top_probs, top_indices = torch.topk(probs[0], 10)
+        utils.print_rank_0("Top-10 概率分布:")
+        for i, (prob, idx) in enumerate(zip(top_probs, top_indices)):
+            token_str = self.tokenizer.decode([idx.item()]) if hasattr(self, 'tokenizer') else str(idx.item())
+            utils.print_rank_0(f"  {i + 1}. [{idx.item():6d}] '{token_str}': {prob.item():.4f}")
+
+        # 采样
+        next_token = torch.multinomial(probs, num_samples=1)
+        utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
+
+        # 更新输入
+        current_input = torch.cat([current_input, next_token], dim=1)
+        attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
+
+        utils.print_rank_0(f"更新后输入长度: {current_input.shape[1]}")
+
+    return current_input
