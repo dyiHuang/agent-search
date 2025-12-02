@@ -93,7 +93,8 @@ class Qwen2DotProductAttention(DotProductAttention):
             # **kwargs,
         )
 
-        print(f"dp attn_output - 形状: {attn_output.shape}, 均值: {attn_output.mean():.6f}, 标准差: {attn_output.std():.6f}")
+        print(
+            f"dp attn_output - 形状: {attn_output.shape}, 均值: {attn_output.mean():.6f}, 标准差: {attn_output.std():.6f}")
 
         # =========================
         # Context layer. [sq, b, hp]
@@ -133,8 +134,8 @@ class Qwen2MegatronAttention(SelfAttention):
                 linear_qkv=tensor_parallel.ColumnParallelLinear,
                 core_attention=Qwen2DotProductAttention,
                 linear_proj=tensor_parallel.RowParallelLinear,
-                q_layernorm = None,
-                k_layernorm = None,
+                q_layernorm=None,
+                k_layernorm=None,
             ),
             layer_number=layer_number,
             attn_mask_type=attn_mask_type,
@@ -143,20 +144,20 @@ class Qwen2MegatronAttention(SelfAttention):
         )
 
     def forward(
-        self,
-        hidden_states: Tensor,
-        attention_mask: Tensor,
-        key_value_states: Optional[Tensor] = None,
-        inference_context: Optional[BaseInferenceContext] = None,
-        rotary_pos_emb: Optional[Union[Tensor, Tuple[Tensor, Tensor]]] = None,
-        rotary_pos_cos: Optional[Tensor] = None,
-        rotary_pos_sin: Optional[Tensor] = None,
-        rotary_pos_cos_sin: Optional[Tensor] = None,
-        attention_bias: Optional[Tensor] = None,
-        packed_seq_params: Optional[PackedSeqParams] = None,
-        sequence_len_offset: Optional[int] = None,
-        *,
-        inference_params: Optional[BaseInferenceContext] = None,
+            self,
+            hidden_states: Tensor,
+            attention_mask: Tensor,
+            key_value_states: Optional[Tensor] = None,
+            inference_context: Optional[BaseInferenceContext] = None,
+            rotary_pos_emb: Optional[Union[Tensor, Tuple[Tensor, Tensor]]] = None,
+            rotary_pos_cos: Optional[Tensor] = None,
+            rotary_pos_sin: Optional[Tensor] = None,
+            rotary_pos_cos_sin: Optional[Tensor] = None,
+            attention_bias: Optional[Tensor] = None,
+            packed_seq_params: Optional[PackedSeqParams] = None,
+            sequence_len_offset: Optional[int] = None,
+            *,
+            inference_params: Optional[BaseInferenceContext] = None,
     ) -> Tuple[Tensor, Tensor]:
         """
         Perform a forward pass through the attention module.
@@ -245,7 +246,8 @@ class Qwen2MegatronAttention(SelfAttention):
         Derives `query`, `key` and `value` tensors from `hidden_states`. If `split_qkv=False`, then
         the unsplit mixed_qkv tensor is returned.
         """
-        print(f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+        print(
+            f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
         # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
         mixed_qkv, _ = self.linear_qkv(hidden_states)
 
@@ -279,8 +281,8 @@ class Qwen2MegatronAttention(SelfAttention):
 
         p_split_arg_list = [
             (
-                self.num_attention_heads_per_partition
-                * self.hidden_size_per_attention_head
+                    self.num_attention_heads_per_partition
+                    * self.hidden_size_per_attention_head
             ),
             self.hidden_size_per_attention_head * self.num_query_groups_per_partition,
             self.hidden_size_per_attention_head * self.num_query_groups_per_partition,
@@ -309,9 +311,12 @@ class Qwen2MegatronAttention(SelfAttention):
         # # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
         # query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
 
-        query = q.reshape(q.size(0), q.size(1), self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)  # 16 heads, 128 per head
-        key = k.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)  # 2 kv heads, 128 per head
-        value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)
+        query = q.reshape(q.size(0), q.size(1), self.num_attention_heads_per_partition,
+                          self.hidden_size_per_attention_head)  # 16 heads, 128 per head
+        key = k.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition,
+                        self.hidden_size_per_attention_head)  # 2 kv heads, 128 per head
+        value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition,
+                          self.hidden_size_per_attention_head)
 
         print(f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
 
@@ -327,18 +332,18 @@ class Qwen2MegatronAttention(SelfAttention):
         return query, key, value
 
     def _adjust_key_value_for_inference(
-        self,
-        inference_context: BaseInferenceContext,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        rotary_pos_emb: Tensor,
-        rotary_pos_cos: Optional[Tensor] = None,
-        rotary_pos_sin: Optional[Tensor] = None,
-        rotary_pos_cos_sin: Optional[Tensor] = None,
-        sequence_len_offset: Optional[int] = None,
-        *,
-        inference_params: Optional[BaseInferenceContext] = None,
+            self,
+            inference_context: BaseInferenceContext,
+            query: Tensor,
+            key: Tensor,
+            value: Tensor,
+            rotary_pos_emb: Tensor,
+            rotary_pos_cos: Optional[Tensor] = None,
+            rotary_pos_sin: Optional[Tensor] = None,
+            rotary_pos_cos_sin: Optional[Tensor] = None,
+            sequence_len_offset: Optional[int] = None,
+            *,
+            inference_params: Optional[BaseInferenceContext] = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Saves the generated key and value tensors to the end of the buffers in inference_context.
@@ -393,7 +398,7 @@ class Qwen2MegatronAttention(SelfAttention):
                 )
 
         if (
-            not inference_context.is_static_batching() or inference_context.sequence_len_offset > 0
+                not inference_context.is_static_batching() or inference_context.sequence_len_offset > 0
         ) and (not self.training or not is_te_min_version("2.2.0")):
             # This should mean that we are past the prompt forward_step
             # and so we need to turn off masking
@@ -451,7 +456,6 @@ class Qwen2MegatronAttention(SelfAttention):
         return query, key, value, rotary_pos_emb, attn_mask_type, block_table
 
 
-
 class Qwen2MegatronMLP(MLP):
     def __init__(self, config: TransformerConfig):
         self.config = config
@@ -483,7 +487,8 @@ class Qwen2MegatronMLP(MLP):
             nvtx_range_pop(suffix="linear_fc2")
         nvtx_range_pop(suffix="activation")
 
-        utils.print_rank_0(f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
+        utils.print_rank_0(
+            f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
         return output, output_bias
 
 
@@ -503,8 +508,10 @@ class Qwen2RMSNorm(nn.Module):
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        print(f"megatron Qwen2RMSNorm hidden_states: dtype={hidden_states.dtype} shape={hidden_states.shape}, mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
-        print(f"megatron Qwen2RMSNorm weight: dtype={self.weight.dtype} shape={self.weight.shape}, mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
+        print(
+            f"megatron Qwen2RMSNorm hidden_states: dtype={hidden_states.dtype} shape={hidden_states.shape}, mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
+        print(
+            f"megatron Qwen2RMSNorm weight: dtype={self.weight.dtype} shape={self.weight.shape}, mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
         return self.weight * hidden_states.to(input_dtype)
 
     def extra_repr(self):
@@ -533,7 +540,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
             layer_number=layer_number)
         qwen_config._attn_implementation = 'sdpa'
         self.self_attention.core_attention.qwen_config = qwen_config
-        self.attention_type = qwen_config.layer_types[layer_number-1]
+        self.attention_type = qwen_config.layer_types[layer_number - 1]
 
     def _forward_attention(
             self,
@@ -683,6 +690,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
         # )
 
         return hidden_states
+
 
 class Qwen2PreTrainedModel(PreTrainedModel):
     config: Qwen2Config
@@ -842,7 +850,8 @@ class Qwen2MegatronModel(MegatronModule):
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
-            print(f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
+            print(
+                f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
             hidden_states = layer(
                 hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb
             )
@@ -1395,7 +1404,9 @@ class Qwen2MegatronModel(MegatronModule):
             utils.print_rank_0(f"输入层归一化: mean={norm_input.mean():.6f}, std={norm_input.std():.6f}")
 
             # 注意力输出
-            attention_output = layer.self_attention(norm_input, attention_mask, rotary_pos_emb)
+            attention_output = layer.self_attention(norm_input,
+                                                    attention_mask=attention_mask,
+                                                    rotary_pos_emb=rotary_pos_emb)
             if isinstance(attention_output, tuple):
                 attention_output = attention_output[0]
 
