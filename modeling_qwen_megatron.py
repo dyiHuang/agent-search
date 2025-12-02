@@ -146,9 +146,9 @@ class Qwen2MegatronAttention(SelfAttention):
         Derives `query`, `key` and `value` tensors from `hidden_states`. If `split_qkv=False`, then
         the unsplit mixed_qkv tensor is returned.
         """
+        print(f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
         # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
         mixed_qkv, _ = self.linear_qkv(hidden_states)
-        print(f"hidden_states - dtype: {hidden_states.dtype}, self.linear_qkv.weight - dtype: {self.linear_qkv.weight.dtype}")
 
         # # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
         # new_tensor_shape = mixed_qkv.size()[:-1] + (
