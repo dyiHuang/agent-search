@@ -439,6 +439,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         for layer in self.layers:
+            print(f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
             hidden_states = layer(
                 hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb
             )
