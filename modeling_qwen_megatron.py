@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Optional, Union, List, Dict, Callable
+from typing import Optional, Union, List, Dict, Callable, Any
 
 import torch
 from torch import Tensor
@@ -41,6 +41,8 @@ from tensordict import TensorDict
 
 from megatron.core.utils import (
     get_tensor_model_parallel_group_if_none,
+    deprecate_inference_params,
+    get_pg_rank,
     nvtx_range_pop,
     nvtx_range_push,
 )
@@ -304,6 +306,82 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
         self.self_attention.core_attention.qwen_config = qwen_config
         self.attention_type = qwen_config.layer_types[layer_number-1]
 
+    def _forward_attention(
+            self,
+            hidden_states: Tensor,
+            attention_mask: Optional[Tensor] = None,
+            context: Optional[Tensor] = None,
+            context_mask: Optional[Tensor] = None,
+            rotary_pos_emb: Optional[Tensor] = None,
+            rotary_pos_cos: Optional[Tensor] = None,
+            rotary_pos_sin: Optional[Tensor] = None,
+            rotary_pos_cos_sin: Optional[Tensor] = None,
+            attention_bias: Optional[Tensor] = None,
+            inference_context: Optional[Any] = None,
+            packed_seq_params: Optional[PackedSeqParams] = None,
+            sequence_len_offset: Optional[Tensor] = None,
+            *,
+            inference_params: Optional[Any] = None,
+    ):
+        """
+        Perform a forward pass through the attention layer and the layernorms before and after
+        the attention operations.
+
+        Args:
+            hidden_states (Tensor): Input tensor of shape [s, b, h] where s is sequence length,
+                b is batch size, and h is hidden size.
+            attention_mask (Tensor): Mask tensor for self-attention.
+            context (Tensor, optional): Context tensor for cross-attention.
+            context_mask (Tensor, optional): Mask tensor for cross-attention.
+            rotary_pos_emb (Tensor, optional): Rotary positional embeddings.
+            rotary_pos_cos (Optional[Tensor]): Rotary embedding cosine.
+            rotary_pos_sin (Optional[Tensor]): Rotary embedding sine.
+            rotary_pos_cos_sin (Optional[Tensor]): Combined rotary embedding cosine and sine.
+            Currently used exclusively for inference with dynamic batching and flashinfer RoPE.
+            attention_bias (Tensor, optional): Bias tensor for Q * K.T.
+            inference_context (object, optional): Parameters for inference-time optimizations.
+            packed_seq_params (object, optional): Parameters for packed sequence processing.
+            sequence_len_offset (Tensor, optional): Offset along sequence dimension
+                during inference.
+
+        Returns:
+            Tuple[Tensor, Tensor]: A tuple containing:
+                hidden_states (Tensor): Transformed hidden states before the MLP layernorm.
+                context (Tensor): Updated context tensor if cross-attention is used,
+                otherwise None.
+        """
+
+        inference_context = deprecate_inference_params(inference_context, inference_params)
+
+        # Residual connection.
+        residual = hidden_states
+
+        input_layernorm_output = self.input_layernorm(hidden_states)
+
+        # Self attention.
+        nvtx_range_push(suffix="self_attention")
+        attention_output_with_bias = self.self_attention(
+            input_layernorm_output,
+            attention_mask=attention_mask,
+            inference_context=inference_context,
+            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_cos=rotary_pos_cos,
+            rotary_pos_sin=rotary_pos_sin,
+            rotary_pos_cos_sin=rotary_pos_cos_sin,
+            attention_bias=attention_bias,
+            packed_seq_params=packed_seq_params,
+            sequence_len_offset=sequence_len_offset,
+        )
+        nvtx_range_pop(suffix="self_attention")
+
+        nvtx_range_push(suffix="self_attn_bda")
+        hidden_states = attention_output_with_bias[0] + residual
+        nvtx_range_pop(suffix="self_attn_bda")
+
+        if isinstance(attention_output_with_bias, dict) and "context" in attention_output_with_bias:
+            context = attention_output_with_bias["context"]
+
+        return hidden_states, context
 
 class Qwen2PreTrainedModel(PreTrainedModel):
     config: Qwen2Config
