@@ -213,6 +213,8 @@ class Qwen2MegatronAttention(SelfAttention):
         key = k.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)  # 2 kv heads, 128 per head
         value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)
 
+        print(f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
 
