@@ -65,6 +65,10 @@ class Qwen2DotProductAttention(DotProductAttention):
         key = key.transpose(0, 1).transpose(1, 2).contiguous()
         value = value.transpose(0, 1).transpose(1, 2).contiguous()
 
+        print(f"query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
+        print(f"key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        print(f"value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
+
         attn_output, attn_weights = attention_interface(
             self,
             query,
@@ -172,15 +176,15 @@ class Qwen2MegatronAttention(SelfAttention):
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.weight, p_split_arg_list, dim=0)
 
-        print(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
-        print(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
+        # print(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        # print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # print(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.bias, p_split_arg_list, dim=0)
 
-        print(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
-        print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
+        # print(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        # print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         # # Return unsplit mixed_qkv and split_arg_list
         # if not split_qkv:
@@ -205,10 +209,6 @@ class Qwen2MegatronAttention(SelfAttention):
 
         if self.config.test_mode:
             self.run_realtime_tests()
-
-        print(f"query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
-        print(f"key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
-        print(f"value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
         return query, key, value
 
