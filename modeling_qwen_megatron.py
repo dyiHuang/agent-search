@@ -1378,12 +1378,7 @@ class Qwen2MegatronModel(MegatronModule):
         # 检查Rotary Embedding
         seq_len = hidden_states.size(0)
         position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
-        cos, sin = self.rotary_emb(hidden_states, position_ids)
-        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
-        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
-        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-
-        rotary_pos_emb = cos_sin, cos_sin
+        rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
         for layer_idx in range(3):
             utils.print_rank_0(f"\n--- 第{layer_idx}层残差连接 ---")
@@ -1431,12 +1426,7 @@ class Qwen2MegatronModel(MegatronModule):
         # 检查Rotary Embedding
         seq_len = hidden_states.size(0)
         position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
-        cos, sin = self.rotary_emb(hidden_states, position_ids)
-        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
-        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
-        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-
-        rotary_pos_emb = cos_sin, cos_sin
+        rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
         for layer in self.layers:
             layer_output = layer(hidden_states, attention_mask, rotary_pos_emb)
@@ -1480,11 +1470,7 @@ class Qwen2MegatronModel(MegatronModule):
         # 检查Rotary Embedding
         seq_len = hidden_states.size(0)
         position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
-        cos, sin = self.rotary_emb(hidden_states, position_ids)
-        utils.print_rank_0(f"Rotary cos - 形状: {cos.shape}, 范围: [{cos.min():.3f}, {cos.max():.3f}]")
-        utils.print_rank_0(f"Rotary sin - 形状: {sin.shape}, 范围: [{sin.min():.3f}, {sin.max():.3f}]")
-        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-        rotary_pos_emb = cos_sin, cos_sin
+        rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
         # 只运行到第2层
         for layer_idx in range(3):
@@ -1688,10 +1674,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         seq_len = hidden_states.size(0)
         position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
-        cos, sin = self.rotary_emb(hidden_states, position_ids)  # [b, s, h]
-        cos_sin = torch.cat([cos, sin], dim=-1).transpose(1, 0).contiguous()
-
-        rotary_pos_emb = cos_sin, cos_sin
+        rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         # 2. Transformer层传播（完整序列，不提前截断，保证特征完整性）
