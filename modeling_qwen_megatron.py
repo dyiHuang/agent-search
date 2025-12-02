@@ -848,7 +848,7 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = self.forward(
                     input_ids=current_input,
                     attention_mask=attention_mask,
-                    only_last_token=True  # 只获取最后一个token的logits
+                    only_last_token=False  # 只获取最后一个token的logits
                 )
 
             utils.print_rank_0(f"Logits形状: {logits.shape}")
