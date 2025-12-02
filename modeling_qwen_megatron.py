@@ -34,6 +34,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
+from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 
 import core_algos
 import qwen_load
@@ -140,6 +141,104 @@ class Qwen2MegatronAttention(SelfAttention):
             cp_comm_type=cp_comm_type,
             pg_collection=pg_collection,
         )
+
+    def forward(
+        self,
+        hidden_states: Tensor,
+        attention_mask: Tensor,
+        key_value_states: Optional[Tensor] = None,
+        inference_context: Optional[BaseInferenceContext] = None,
+        rotary_pos_emb: Optional[Union[Tensor, Tuple[Tensor, Tensor]]] = None,
+        rotary_pos_cos: Optional[Tensor] = None,
+        rotary_pos_sin: Optional[Tensor] = None,
+        rotary_pos_cos_sin: Optional[Tensor] = None,
+        attention_bias: Optional[Tensor] = None,
+        packed_seq_params: Optional[PackedSeqParams] = None,
+        sequence_len_offset: Optional[int] = None,
+        *,
+        inference_params: Optional[BaseInferenceContext] = None,
+    ) -> Tuple[Tensor, Tensor]:
+        """
+        Perform a forward pass through the attention module.
+
+        Args:
+            hidden_states (Tensor): Hidden states.
+            attention_mask (Tensor): Attention mask.
+            key_value_states (Optional[Tensor]): Key/value states (for cross attention).
+            inference_context (Optional[BaseInferenceContext]): Inference context that manages
+                KV cache.
+            rotary_pos_emb (Optional[Union[Tensor, Tuple[Tensor, Tensor]]]): Rotary
+                embedding tensor(s).
+            rotary_pos_cos (Optional[Tensor]): Rotary embedding cosine.
+            rotary_pos_sin (Optional[Tensor]): Rotary embedding sine.
+            rotary_pos_cos_sin (Optional[Tensor]): Combined rotary embedding cosine and sine.
+            Currently used exclusively for inference with dynamic batching and flashinfer RoPE.
+            attention_bias (Optional[Tensor]): Attention bias.
+            packed_seq_params (Optional[PackedSeqparams]): Parameters used for THD format.
+            sequence_len_offset (Optional[int]): Sequence length offset used for
+                inference CUDA graphs.
+
+        Return:
+            (Tuple[Tensor, Tensor]) Attention output and bias.
+            :param inference_params:
+
+        """
+
+        # For self attention we just duplicate the rotary_pos_emb if it isn't already
+        if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
+            rotary_pos_emb = (rotary_pos_emb,) * 2
+
+        # =====================
+        # Query, Key, and Value
+        # =====================
+        # Get the query, key and value tensors based on the type of attention -
+        # self or cross attn.
+        nvtx_range_push(suffix="qkv")
+        qkv_output = self.get_query_key_value_tensors(
+            hidden_states, key_value_states
+        )
+        query, key, value = qkv_output
+        nvtx_range_pop(suffix="qkv")
+
+        # ================================================
+        # relative positional embedding (rotary embedding)
+        # ================================================
+        nvtx_range_push(suffix="rotary_pos_emb")
+        cos, sin = rotary_pos_emb
+        print(f"Qwen2MegatronAttention cos - 形状: {cos.shape}, mean: [{cos.mean():.6f}, std: {cos.std():.6f}]")
+        print(f"Qwen2MegatronAttention sin - 形状: {sin.shape}, mean: [{sin.mean():.6f}, std: {sin.std():.6f}]")
+        query = query.transpose(0, 1)
+        key = key.transpose(0, 1)
+        query, key = apply_rotary_pos_emb(query, key, cos, sin)
+        query = query.transpose(0, 1)
+        key = key.transpose(0, 1)
+        nvtx_range_pop(suffix="rotary_pos_emb")
+
+        # ==================================
+        # core attention computation
+        # ==================================
+
+        nvtx_range_push(suffix="core_attention")
+        core_attn_out = self.core_attention(
+            query,
+            key,
+            value,
+            attention_mask,
+            attn_mask_type=None,
+            attention_bias=attention_bias,
+            packed_seq_params=packed_seq_params,
+        )
+        nvtx_range_pop(suffix="core_attention")
+
+        # =================
+        # Output. [sq, b, h]
+        # =================
+
+        nvtx_range_push(suffix="linear_proj")
+        output, bias = self.linear_proj(core_attn_out)
+        nvtx_range_pop(suffix="linear_proj")
+
+        return output, bias
 
     def get_query_key_value_tensors(self, hidden_states, key_value_states=None, split_qkv=True):
         """
