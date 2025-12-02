@@ -27,7 +27,7 @@ def apply_rotary_pos_emb_new(
     cos_restored, sin_restored = torch.split(freqs, freqs.shape[-1] // 2, dim=-1)
     t = t.transpose(0, 1)
     print(f"apply_rotary_pos_emb_new cos - 形状: {cos_restored.shape}, mean: [{cos_restored.mean():.6f}, std: {cos_restored.std():.6f}]")
-    print(f"apply_rotary_pos_emb_new sin - 形状: {sin_restored.shape}, mean: [{sin_restored.mean():.3f}, std: {sin_restored.std():.3f}]")
+    print(f"apply_rotary_pos_emb_new sin - 形状: {sin_restored.shape}, mean: [{sin_restored.mean():.6f}, std: {sin_restored.std():.6f}]")
     r1, r2 = apply_rotary_pos_emb(t, t, cos_restored, sin_restored, unsqueeze_dim=2)
     r1 = r1.transpose(0, 1).contiguous()
     return r1
