@@ -133,25 +133,33 @@ class Qwen2MegatronAttention(SelfAttention):
         mixed_qkv, _ = self.linear_qkv(hidden_states)
         print(f"hidden_states - dtype: {hidden_states.dtype}, self.linear_qkv.weight - dtype: {self.linear_qkv.weight.dtype}")
 
-        # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
-        new_tensor_shape = mixed_qkv.size()[:-1] + (
-            self.num_query_groups_per_partition,
-            (
-                (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 2)
-                * self.hidden_size_per_attention_head
-            ),
-        )
-        mixed_qkv = mixed_qkv.view(*new_tensor_shape)
+        # # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
+        # new_tensor_shape = mixed_qkv.size()[:-1] + (
+        #     self.num_query_groups_per_partition,
+        #     (
+        #         (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 2)
+        #         * self.hidden_size_per_attention_head
+        #     ),
+        # )
+        # mixed_qkv = mixed_qkv.view(*new_tensor_shape)
+        #
+        # split_arg_list = [
+        #     (
+        #         self.num_attention_heads_per_partition
+        #         // self.num_query_groups_per_partition
+        #         * self.hidden_size_per_attention_head
+        #     ),
+        #     self.hidden_size_per_attention_head,
+        #     self.hidden_size_per_attention_head,
+        # ]
 
-        split_arg_list = [
-            (
-                self.num_attention_heads_per_partition
-                // self.num_query_groups_per_partition
-                * self.hidden_size_per_attention_head
-            ),
-            self.hidden_size_per_attention_head,
-            self.hidden_size_per_attention_head,
-        ]
+        q_size = self.num_attention_heads_per_partition * self.hidden_size_per_attention_head  # 2048 = hidden_size
+        kv_size = self.hidden_size_per_attention_head * self.num_query_groups_per_partition  # 128 = hidden_size_per_head, 2 = num_kv_heads
+
+        # 确保分割正确
+        q = mixed_qkv[..., :q_size]
+        k = mixed_qkv[..., q_size:q_size + kv_size]
+        v = mixed_qkv[..., q_size + kv_size:q_size + 2 * kv_size]
 
         p_split_arg_list = [
             (
@@ -174,16 +182,20 @@ class Qwen2MegatronAttention(SelfAttention):
         print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
         print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
-        # Return unsplit mixed_qkv and split_arg_list
-        if not split_qkv:
-            return mixed_qkv, split_arg_list
+        # # Return unsplit mixed_qkv and split_arg_list
+        # if not split_qkv:
+        #     return mixed_qkv, split_arg_list
+        #
+        # # [sq, b, ng, (np/ng + 2) * hn]
+        # # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+        # (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=3)
+        #
+        # # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
+        # query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
 
-        # [sq, b, ng, (np/ng + 2) * hn]
-        # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
-        (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=3)
-
-        # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
-        query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
+        query = q.reshape(q.size(0), q.size(1), self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)  # 16 heads, 128 per head
+        key = k.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)  # 2 kv heads, 128 per head
+        value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition, self.hidden_size_per_attention_head)
 
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
@@ -193,6 +205,10 @@ class Qwen2MegatronAttention(SelfAttention):
 
         if self.config.test_mode:
             self.run_realtime_tests()
+
+        print(f"query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
+        print(f"key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        print(f"value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
         return query, key, value
 
