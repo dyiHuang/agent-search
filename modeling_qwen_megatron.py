@@ -1667,13 +1667,13 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         # 嵌入 + Rotary 编码
         rotary_pos_emb = None
         if self.pp_rank == 0:
-            ori_input_ids = input_ids
+            # ori_input_ids = input_ids
             # [b, s, h] -> [s, b, h]
-            input_ids = input_ids.transpose(1, 0).contiguous()
+            # input_ids = input_ids.transpose(1, 0).contiguous()
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
 
-            ori_input_ids.transpose(1, 0)
+            # ori_input_ids.transpose(1, 0)
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
@@ -1684,6 +1684,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
+        hidden_states = hidden_states.transpose(0, 1)
         seq_len = hidden_states.size(0)
         position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
