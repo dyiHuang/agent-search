@@ -65,8 +65,9 @@ class Qwen2DotProductAttention(DotProductAttention):
         key = key.transpose(0, 1).transpose(1, 2).contiguous()
         value = value.transpose(0, 1).transpose(1, 2).contiguous()
 
-        # print(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
-        # print(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
+        print(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
+        print(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        print(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
         attn_output, attn_weights = attention_interface(
             self,
