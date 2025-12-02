@@ -124,6 +124,78 @@ class Qwen2MegatronAttention(SelfAttention):
             pg_collection=pg_collection,
         )
 
+    def get_query_key_value_tensors(self, hidden_states, key_value_states=None, split_qkv=True):
+        """
+        Derives `query`, `key` and `value` tensors from `hidden_states`. If `split_qkv=False`, then
+        the unsplit mixed_qkv tensor is returned.
+        """
+        # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
+        mixed_qkv, _ = self.linear_qkv(hidden_states)
+        print(f"hidden_states - dtype: {hidden_states.dtype}, self.linear_qkv.weight - dtype: {self.linear_qkv.weight.dtype}")
+
+        # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
+        new_tensor_shape = mixed_qkv.size()[:-1] + (
+            self.num_query_groups_per_partition,
+            (
+                (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 2)
+                * self.hidden_size_per_attention_head
+            ),
+        )
+        mixed_qkv = mixed_qkv.view(*new_tensor_shape)
+
+        split_arg_list = [
+            (
+                self.num_attention_heads_per_partition
+                // self.num_query_groups_per_partition
+                * self.hidden_size_per_attention_head
+            ),
+            self.hidden_size_per_attention_head,
+            self.hidden_size_per_attention_head,
+        ]
+
+        p_split_arg_list = [
+            (
+                self.num_attention_heads_per_partition
+                * self.hidden_size_per_attention_head
+            ),
+            self.hidden_size_per_attention_head * self.num_query_groups_per_partition,
+            self.hidden_size_per_attention_head * self.num_query_groups_per_partition,
+        ]
+
+        (query_p, key_p, value_p) = torch.split(self.linear_qkv.weight, p_split_arg_list, dim=0)
+
+        print(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        print(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
+
+        (query_p, key_p, value_p) = torch.split(self.linear_qkv.bias, p_split_arg_list, dim=0)
+
+        print(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
+
+        # Return unsplit mixed_qkv and split_arg_list
+        if not split_qkv:
+            return mixed_qkv, split_arg_list
+
+        # [sq, b, ng, (np/ng + 2) * hn]
+        # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+        (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=3)
+
+        # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
+        query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
+
+        if self.q_layernorm is not None:
+            query = self.q_layernorm(query)
+
+        if self.k_layernorm is not None:
+            key = self.k_layernorm(key)
+
+        if self.config.test_mode:
+            self.run_realtime_tests()
+
+        return query, key, value
+
 
 class Qwen2MegatronMLP(MLP):
     def __init__(self, config: TransformerConfig):
