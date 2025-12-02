@@ -271,6 +271,8 @@ class Qwen2RMSNorm(nn.Module):
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        print(f"megatron Qwen2RMSNorm hidden_states: dtype={hidden_states.dtype} shape={hidden_states.shape}, mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
+        print(f"megatron Qwen2RMSNorm weight: dtype={self.weight.dtype} shape={self.weight.shape}, mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
         return self.weight * hidden_states.to(input_dtype)
 
     def extra_repr(self):
