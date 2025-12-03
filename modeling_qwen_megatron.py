@@ -72,6 +72,8 @@ class Qwen2DotProductAttention(DotProductAttention):
         attention_interface: Callable = eager_attention_forward
         if self.qwen_config._attn_implementation != "eager":
             attention_interface = ALL_ATTENTION_FUNCTIONS[self.qwen_config._attn_implementation]
+
+        sq, b, np, hn = query.size(0), query.size(1), query.size(2), query.size(3)
         # [sq, b, np, hn],[sq, b, gp, hn] -> [b, np, sq, hn],[b, gp, sq, hn]
         query = query.transpose(0, 1).transpose(1, 2).contiguous()
         key = key.transpose(0, 1).transpose(1, 2).contiguous()
@@ -81,6 +83,7 @@ class Qwen2DotProductAttention(DotProductAttention):
         print(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
         print(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
+        # [b, sq, np, hn]
         attn_output, attn_weights = attention_interface(
             self,
             query,
@@ -100,17 +103,8 @@ class Qwen2DotProductAttention(DotProductAttention):
         # Context layer. [sq, b, hp]
         # =========================
 
-        # value -> context layer.
-        # [sk, b, np, hn] --> [b, np, sq, hn]
-
-        # context layer shape: [b, np, sq, hn]
-        output_size = (value.size(0), query.size(1), query.size(2), value.size(3))
-
-        # change view [b, np, sq, hn]
-        context = attn_output.view(*output_size)
-
-        # [b, np, sq, hn] --> [sq, b, np, hn]
-        context = context.permute(2, 0, 1, 3).contiguous()
+        # [b, sq, np, hn] --> [sq, b, np, hn]
+        context = attn_output.permute(0, 1).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
         new_context_shape = context.size()[:-2] + (self.hidden_size_per_partition,)
@@ -198,6 +192,7 @@ class Qwen2MegatronAttention(SelfAttention):
         qkv_output = self.get_query_key_value_tensors(
             hidden_states, key_value_states
         )
+        # [sq, b, head, dim]
         query, key, value = qkv_output
         nvtx_range_pop(suffix="qkv")
 
@@ -238,6 +233,10 @@ class Qwen2MegatronAttention(SelfAttention):
         nvtx_range_push(suffix="linear_proj")
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix="linear_proj")
+        o_proj_w, o_proj_b = self.linear_proj.weight, self.linear_proj.bias
+        print(f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
+        print(f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
+        print(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
 
         return output, bias
 
@@ -611,6 +610,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
         nvtx_range_pop(suffix="self_attention")
 
         nvtx_range_push(suffix="self_attn_bda")
+        # [sq, b, h]
         hidden_states = attention_output_with_bias[0] + residual
         nvtx_range_pop(suffix="self_attn_bda")
 
@@ -630,6 +630,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
             output (Tensor): Transformed hidden states of shape [s, b, h].
         """
 
+        # [sq, b, h]
         # Residual connection.
         residual = hidden_states
 
@@ -673,8 +674,6 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
             )
         nvtx_range_pop(suffix="mlp")
 
-        # TODO: could we move `bias_dropout_add_exec_handler` itself
-        # inside the module provided in the `bias_dropout_add_spec` module?
         nvtx_range_push(suffix="mlp_bda")
         hidden_states = mlp_output_with_bias[0] + residual
         nvtx_range_pop(suffix="mlp_bda")
@@ -790,7 +789,7 @@ class Qwen2MegatronModel(MegatronModule):
             # [b, s, h] -> [s, b, h]
             # input_ids = input_ids.transpose(1, 0).contiguous()
             # 嵌入层（仅 stage 0 有）
-            hidden_states = self.embedding(input_ids)
+            hidden_states = self.embedding(input_ids) # [b, s, h]
 
             # ori_input_ids.transpose(1, 0)
 
@@ -808,7 +807,6 @@ class Qwen2MegatronModel(MegatronModule):
         #     # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
         #     attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
-        hidden_states = hidden_states.transpose(0, 1)
         # 检查Rotary Embedding
         use_cache: Optional[bool] = None
         cache_position: Optional[torch.LongTensor] = None
@@ -820,7 +818,7 @@ class Qwen2MegatronModel(MegatronModule):
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + hidden_states.shape[0], device=hidden_states.device
+                past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
             )
 
         if position_ids is None:
@@ -828,7 +826,6 @@ class Qwen2MegatronModel(MegatronModule):
 
         # It may already have been prepared by e.g. `generate`
         if not isinstance(causal_mask_mapping := attention_mask, dict):
-            hidden_states = hidden_states.transpose(1, 0)
             # Prepare mask arguments
             mask_kwargs = {
                 "config": self.qwen_config,
@@ -842,14 +839,15 @@ class Qwen2MegatronModel(MegatronModule):
             causal_mask_mapping = {
                 "full_attention": create_causal_mask(**mask_kwargs),
             }
-            hidden_states = hidden_states.transpose(1, 0).contiguous()
 
-        # seq_len = hidden_states.size(0)
+        seq_len = hidden_states.size(1)
+        print(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
+        hidden_states = hidden_states.transpose(1, 0).contiguous()
         for layer in self.layers:
             print(
                 f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
@@ -874,7 +872,7 @@ class Qwen2MegatronModel(MegatronModule):
 
             # 若仅需最后一个token的logits，直接返回
             if only_last_token:
-                logits = logits[:, -1:]  # [batch, 1, vocab_size/tp_size]
+                logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
             logits = logits.float()
             return logits
