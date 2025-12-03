@@ -25,7 +25,7 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding, eager
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
-from transformers.masking_utils import create_causal_mask
+from transformers.masking_utils import create_causal_mask, ALL_MASK_ATTENTION_FUNCTIONS, causal_mask_function
 from transformers.cache_utils import Cache, DynamicCache
 from megatron.core.packed_seq_params import PackedSeqParams
 
@@ -43,7 +43,7 @@ from megatron.core.utils import (
     nvtx_range_pop,
     nvtx_range_push,
 )
-from megatron.core.inference.contexts import BaseInferenceContext
+from megatron.core.inference.contexts import BaseInferenceContext, StaticInferenceContext
 
 
 class Qwen2DotProductAttention(DotProductAttention):
@@ -190,6 +190,23 @@ class Qwen2MegatronAttention(SelfAttention):
         query, key, value = qkv_output
         nvtx_range_pop(suffix="qkv")
 
+        # =====================
+        # K-V Cache
+        # =====================
+        query, key, value, rotary_pos_emb, attn_mask_type, block_table = (
+            self._adjust_key_value_for_inference(
+                inference_context,
+                query,
+                key,
+                value,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                rotary_pos_cos_sin,
+                sequence_len_offset,
+            )
+        )
+
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
@@ -228,10 +245,13 @@ class Qwen2MegatronAttention(SelfAttention):
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix="linear_proj")
         o_proj_w, o_proj_b = self.linear_proj.weight, self.linear_proj.bias
-        utils.print_rank_0(f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
-        utils.print_rank_0(f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
+        utils.print_rank_0(
+            f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
+        utils.print_rank_0(
+            f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
         if o_proj_b is not None:
-            utils.print_rank_0(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
+            utils.print_rank_0(
+                f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
 
         return output, bias
 
@@ -301,7 +321,8 @@ class Qwen2MegatronAttention(SelfAttention):
         value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition,
                           self.hidden_size_per_attention_head)
 
-        utils.print_rank_0(f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        utils.print_rank_0(
+            f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
 
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
@@ -354,7 +375,6 @@ class Qwen2MegatronAttention(SelfAttention):
 
         attn_mask_type = self.attn_mask_type
         if inference_context is None:
-            utils.print_rank_0(f"_adjust_key_value_for_inference: inference_context is None")
             return query, key, value, rotary_pos_emb, attn_mask_type, None
 
         # =================================================
@@ -402,6 +422,12 @@ class Qwen2MegatronAttention(SelfAttention):
                 "Increase inference_max_seq_length."
             )
 
+        if self.config.flash_decode:
+            raise RuntimeError
+        else:
+            rotary_pos_cos_q = None
+            rotary_pos_sin_q = None
+
         # Adjust rotary embeddings.
         # if rotary_pos_emb is not None:
         #     q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -417,25 +443,10 @@ class Qwen2MegatronAttention(SelfAttention):
             # Copy key and values.
             inference_key_memory[sequence_start:sequence_end, batch_start:batch_end, ...] = key
             inference_value_memory[sequence_start:sequence_end, batch_start:batch_end, ...] = value
-            # key = inference_key_memory[:sequence_end, batch_start:batch_end, ...]
-            # value = inference_value_memory[:sequence_end, batch_start:batch_end, ...]
+            key = inference_key_memory[:sequence_end, batch_start:batch_end, ...]
+            value = inference_value_memory[:sequence_end, batch_start:batch_end, ...]
         else:
-            # Apply rotary embeddings before appending KV cache.
-            # if inference_context.use_flashinfer_fused_rope and (rotary_pos_cos_sin is not None):
-            #     query, key = inference_context.apply_fused_qk_rotary_emb(
-            #         query, key, rotary_pos_cos_sin, self.config
-            #     )
-            # elif rotary_pos_emb is not None:
-            #     q_pos_emb, k_pos_emb = rotary_pos_emb
-            #     key = inference_context.apply_rotary_emb_key(
-            #         key, k_pos_emb, self.config, self.pg_collection.cp
-            #     )
-            #
-            #     rotary_pos_emb = (q_pos_emb, None)  # key rotary emb has been applied
-
-            # Append key/value data tensors to cache.
-            inference_context.append_key_value_cache(self.layer_number, key, value)
-        utils.print_rank_0(f"_adjust_key_value_for_inference key: mean={key.mean():.6f}, std={key.std():.6f}")
+            raise RuntimeError
         return query, key, value, rotary_pos_emb, attn_mask_type, block_table
 
 
@@ -615,7 +626,7 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
         """
 
         # Residual connection.
-        residual = hidden_states # [sq, b, h]
+        residual = hidden_states  # [sq, b, h]
 
         # Optional Layer norm post the cross-attention.
         if self.recompute_pre_mlp_layernorm:
@@ -674,24 +685,6 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
         return hidden_states
 
 
-class Qwen2PreTrainedModel(PreTrainedModel):
-    config: Qwen2Config
-    base_model_prefix = "model"
-    # supports_gradient_checkpointing = True
-    # _no_split_modules = ["Qwen2DecoderLayer"]
-    # _skip_keys_device_placement = ["past_key_values"]
-    # _supports_flash_attn = True
-    # _supports_sdpa = True
-    # _supports_flex_attn = True
-
-    # _can_compile_fullgraph = True
-    # _supports_attention_backend = True
-    # _can_record_outputs = {
-    #     "hidden_states": Qwen2DecoderLayer,
-    #     "attentions": Qwen2Attention,
-    # }
-
-
 class Qwen2MegatronModel(MegatronModule):
     """Megatron 并行化的 Qwen2.5-3B 模型"""
 
@@ -745,6 +738,7 @@ class Qwen2MegatronModel(MegatronModule):
                 init_method=megatron_config.init_method
             )
         self.model_type = ModelType.encoder_or_decoder
+        qwen_config._attn_implementation = 'sdpa'
         self.qwen_config = qwen_config
 
     def set_input_tensor(self, input_tensor):
@@ -757,7 +751,8 @@ class Qwen2MegatronModel(MegatronModule):
         forward_step_func"""
         self.input_tensor = input_tensor
 
-    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor = None, only_last_token: bool = False):
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor = None, only_last_token: bool = False,
+                inference_context: Optional[StaticInferenceContext] = None):
         """适配 PP+TP 并行的前向传播：处理跨 stage 数据流转"""
 
         # -------------------------- 1. 第一个 PP stage：执行嵌入层 + Rotary 编码 --------------------------
@@ -769,7 +764,7 @@ class Qwen2MegatronModel(MegatronModule):
             # [b, s, h] -> [s, b, h]
             # input_ids = input_ids.transpose(1, 0).contiguous()
             # 嵌入层（仅 stage 0 有）
-            hidden_states = self.embedding(input_ids) # [b, s, h]
+            hidden_states = self.embedding(input_ids)  # [b, s, h]
 
             # ori_input_ids.transpose(1, 0)
 
@@ -788,39 +783,16 @@ class Qwen2MegatronModel(MegatronModule):
         #     attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
         # 检查Rotary Embedding
-        use_cache: Optional[bool] = None
-        cache_position: Optional[torch.LongTensor] = None
-        past_key_values: Optional[Cache] = None
-        position_ids: Optional[torch.LongTensor] = None
-        if use_cache and past_key_values is None:
-            past_key_values = DynamicCache(config=self.qwen_config)
-
-        if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-            cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
-            )
-
-        if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
-
-        # It may already have been prepared by e.g. `generate`
-        if not isinstance(causal_mask_mapping := attention_mask, dict):
-            # Prepare mask arguments
-            mask_kwargs = {
-                "config": self.qwen_config,
-                "input_embeds": hidden_states,
-                "attention_mask": attention_mask,
-                "cache_position": cache_position,
-                "past_key_values": past_key_values,
-                "position_ids": position_ids,
-            }
-            # Create the masks
-            causal_mask_mapping = {
-                "full_attention": create_causal_mask(**mask_kwargs),
-            }
-
         seq_len = hidden_states.size(1)
+        past_seen_tokens = inference_context.sequence_len_offset if inference_context is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
+        )
+        position_ids = cache_position.unsqueeze(0)
+
+        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
+                                                       inference_context, seq_len)
+
         utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
@@ -832,7 +804,8 @@ class Qwen2MegatronModel(MegatronModule):
             utils.print_rank_0(
                 f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
             hidden_states = layer(
-                hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb
+                hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb,
+                inference_context=inference_context
             )
             # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
             hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
@@ -855,8 +828,43 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
             logits = logits.float()
+            self.increment_inference_ctx_size(inference_context, logits.size(0), seq_len)
             return logits
+        self.increment_inference_ctx_size(inference_context, hidden_states.size(1), seq_len)
         return hidden_states
+
+    @staticmethod
+    def increment_inference_ctx_size(inference_context, batch_size, seq_len):
+        if inference_context is not None:
+            inference_context.increment_sequence_len_offset(seq_len)
+            inference_context.increment_batch_size_offset(batch_size)
+
+    def create_mask_mapping(self, attention_mask, cache_position, hidden_states, inference_context,
+                            seq_len):
+        causal_mask_mapping = {}
+        batch_size = hidden_states.size(0)
+        if attention_mask is not None and attention_mask.ndim == 2:
+            attention_mask = attention_mask.to(device=cache_position.device, dtype=torch.bool)
+        mask_interface = ALL_MASK_ATTENTION_FUNCTIONS[self.qwen_config._attn_implementation]
+        if mask_interface is not None:
+            kv_length = seq_len
+            if inference_context is not None:
+                kv_length = inference_context.sequence_len_offset + seq_len
+            causal_mask = mask_interface(
+                batch_size=batch_size,
+                cache_position=cache_position,
+                kv_length=kv_length,
+                kv_offset=0,
+                mask_function=causal_mask_function,
+                attention_mask=attention_mask,
+                allow_is_causal_skip=True,  # additional kwarg for sdpa
+                local_size=None,  # Additional kwarg for sdpa
+                dtype=hidden_states.dtype,  # Additional kwarg for eager
+            )
+            causal_mask_mapping = {
+                "full_attention": causal_mask,
+            }
+        return causal_mask_mapping
 
     @torch.no_grad()  # 生成过程禁用梯度计算
     def generate(
@@ -872,15 +880,16 @@ class Qwen2MegatronModel(MegatronModule):
         """
         自回归生成方法（适配 Megatron 并行逻辑）
         Args:
-            input_ids: 输入prompt的token id，shape: [batch_size, seq_len]
-            max_length: 生成的最大总长度（含prompt）
-            eos_token_id: 终止符token id（Qwen2.5默认：151643）
-            temperature: 采样温度（<1.0更确定，>1.0更多样）
-            top_k: 仅从top-k个高概率token中采样（None表示不限制）
-            attention_mask: 输入prompt的attention mask，shape: [batch_size, seq_len]
-            pad_token_id: padding token id（用于填充batch中提前终止的样本）
+            :param input_ids: 输入prompt的token id，shape: [batch_size, seq_len]
+            :param max_length: 生成的最大总长度（含prompt）
+            :param eos_token_id: 终止符token id（Qwen2.5默认：151643）
+            :param temperature: 采样温度（<1.0更确定，>1.0更多样）
+            :param top_k: 仅从top-k个高概率token中采样（None表示不限制）
+            :param attention_mask: 输入prompt的attention mask，shape: [batch_size, seq_len]
+            :param pad_token_id: padding token id（用于填充batch中提前终止的样本）
         Returns:
             生成的完整token id，shape: [batch_size, max_length]
+            :param inference_context:
         """
         # 1. 初始化配置和设备
         self.eval()  # 生成时切换为评估模式（禁用dropout）
@@ -891,7 +900,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         # 2. 初始化attention mask（若未提供）
         if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids, dtype=torch.bool, device=device)
+            attention_mask = (input_ids != pad_token_id).to(dtype=torch.bool, device=device)
         else:
             attention_mask = attention_mask.bool()  # 确保是bool类型
 
@@ -908,11 +917,19 @@ class Qwen2MegatronModel(MegatronModule):
         )
         generated_ids[:, :current_seq_len] = input_ids  # 填充prompt部分
 
+        inference_context = StaticInferenceContext(
+            batch_size, max_length
+        )
+
+        next_token = None
         # 6. 自回归生成循环
         for step in range(current_seq_len, max_length):
             # a. 获取当前输入（prompt + 已生成的token）
             current_input_ids = generated_ids[:, :step]  # [batch_size, step]
             current_attention_mask = attention_mask[:, :step]  # [batch_size, step]
+
+            if next_token is not None and inference_context is not None:
+                current_input_ids = next_token
 
             batches = TensorDict(
                 source={
@@ -925,6 +942,7 @@ class Qwen2MegatronModel(MegatronModule):
                 batch=batches,
                 only_last_token=True,  # 关键优化：仅返回最后一个token的logits
                 forward_only=True,
+                inference_context=inference_context,
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
             # logits = [
@@ -969,7 +987,10 @@ class Qwen2MegatronModel(MegatronModule):
             generated_ids[:, step] = next_token.squeeze(1)
 
             # h. 更新attention_mask（新增token的mask为True）
-            new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
+            # new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
+            new_attention_mask = torch.where(finished_mask.unsqueeze(1),
+                                             torch.tensor(False, dtype=torch.bool, device=device),
+                                             torch.tensor(True, dtype=torch.bool, device=device))
             attention_mask = torch.cat([attention_mask, new_attention_mask], dim=-1)  # [batch_size, step+1]
 
             # i. 若所有样本都已完成，提前退出
@@ -979,7 +1000,8 @@ class Qwen2MegatronModel(MegatronModule):
         return generated_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
-                               forward_only=False, post_process_fn=None, meta_info: Dict = None):
+                               forward_only=False, post_process_fn=None, meta_info: Dict = None,
+                               inference_context: Optional[StaticInferenceContext] = None, ):
         """
         We assume:
         - The model takes input: (input_ids, attention_mask, position_ids). No rmpad for the input
@@ -1050,7 +1072,8 @@ class Qwen2MegatronModel(MegatronModule):
             micro_batch = next(batch_iter)
             output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
                            # attention_mask=micro_batch["attention_mask"],
-                           only_last_token=only_last_token)
+                           only_last_token=only_last_token,
+                           inference_context=inference_context)
             return output, partial(loss_func, data=micro_batch)
 
         # batch should be a list of batches inside micro-batches
@@ -1233,15 +1256,25 @@ class Qwen2MegatronModel(MegatronModule):
         current_input = input_ids
         attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
 
+        batch_size, max_sequence_length = input_ids.shape[0], num_steps
+        inference_context = StaticInferenceContext(
+            batch_size, max_sequence_length
+        )
+        next_token = None
         for step in range(num_steps):
             utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
 
+            if next_token is None and inference_context is not None:
+                _input = next_token
+            else:
+                _input = current_input
             # 前向传播获取logits
             with torch.no_grad():
                 logits = self.forward(
-                    input_ids=current_input,
+                    input_ids=_input,
                     # attention_mask=attention_mask,
                     # only_last_token=False  # 只获取最后一个token的logits
+                    inference_context=inference_context,
                 )
 
             utils.print_rank_0(f"Logits形状: {logits.shape}")
@@ -1628,7 +1661,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             input_ids: torch.Tensor,
             attention_mask: torch.Tensor = None,
             only_last_token: bool = True,  # PPO默认仅需最后一个token的价值
-            normalize_value: bool = False  # 是否对价值预测归一化（稳定训练）
+            normalize_value: bool = False,  # 是否对价值预测归一化（稳定训练）
+            inference_context: Optional[StaticInferenceContext] = None,
     ) -> torch.Tensor:
         """
         前向传播：输出序列的价值预测
@@ -1641,31 +1675,30 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             value_preds: 价值预测，维度为：
                 - only_last_token=True: [batch_size, 1]（PPO标准输出）
                 - only_last_token=False: [batch_size, seq_len, 1]（时序价值预测）
+                :param inference_context:
         """
         # -------------------------- 1. 第一个 PP stage：执行嵌入层 + Rotary 编码 --------------------------
         # 嵌入 + Rotary 编码
         rotary_pos_emb = None
         if self.pp_rank == 0:
-            # ori_input_ids = input_ids
-            # [b, s, h] -> [s, b, h]
-            # input_ids = input_ids.transpose(1, 0).contiguous()
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
-            hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size/TP_size]
+            hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size]
 
-            # ori_input_ids.transpose(1, 0)
         else:
             # self.hidden_states should be passed by Megatron
             hidden_states = self.input_tensor
 
-        # -------------------------- 修正注意力掩码维度 --------------------------
-        if attention_mask is not None:
-            # 自注意力需要的掩码形状：[batch_size, 1, seq_len, seq_len]
-            # 1. 将 [batch_size, seq_len] 扩展为 [batch_size, 1, 1, seq_len]
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        seq_len = hidden_states.size(1)
+        past_seen_tokens = inference_context.sequence_len_offset if inference_context is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
+        )
+        position_ids = cache_position.unsqueeze(0)
+
+        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
+                                                       inference_context, seq_len)
 
         hidden_states = hidden_states.transpose(0, 1)
-        seq_len = hidden_states.size(0)
-        position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
@@ -1673,7 +1706,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         # 2. Transformer层传播（完整序列，不提前截断，保证特征完整性）
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, attention_mask=attention_mask, rotary_pos_emb=rotary_pos_emb
+                hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb,
+                inference_context=inference_context
             )
             # 取元组的第一个元素作为新的 hidden_states（忽略 context 信息）
             hidden_states = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
@@ -1705,7 +1739,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         return hidden_states
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
-                               forward_only=False, post_process_fn=None, meta_info: Dict = None):
+                               forward_only=False, post_process_fn=None, meta_info: Dict = None,
+                               inference_context: Optional[StaticInferenceContext] = None, ):
         # broadcast from last pp rank to all other pp ranks
         batch = batch.contiguous()
         torch_functional.broadcast_dict_tensor(batch,
@@ -1752,7 +1787,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
             output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
-                           only_last_token=only_last_token)
+                           only_last_token=only_last_token, inference_context=inference_context)
             return output, partial(loss_func, data=batch)
 
         # batch should be a list of batches inside micro-batches
