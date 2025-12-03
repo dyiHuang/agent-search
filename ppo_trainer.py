@@ -27,7 +27,6 @@ from deepspeed.accelerator import get_accelerator
 #     from torch.optim import AdamW as Adam
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig, ChainedOptimizer
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
-from megatron.core.num_microbatches_calculator import get_num_microbatches
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
 
 from torch.utils.tensorboard import SummaryWriter
@@ -176,11 +175,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 每个进程的种子 = 全局种子 + 进程 rank（避免进程间随机不一致）
         seed = self.config.megatron.seed
         torch.manual_seed(seed + rank)
-        # torch.cuda.manual_seed(seed + rank)
-        # torch.cuda.manual_seed_all(seed + rank)
         model_parallel_cuda_manual_seed(seed, te_rng_tracker=True, inference_rng_tracker=True)
-        # rng_tracker = get_cuda_rng_tracker()
-        # rng_tracker.add("model-parallel-rng", seed=seed)
         import numpy as np
         np.random.seed(seed + rank)
         import random
@@ -189,13 +184,6 @@ class MegatronDeepSpeedPPOTrainer:
     def _init_deepspeed(self):
         """初始化deepspeed引擎（仅优化 LoRa 参数）"""
         utils.print_rank_0("DeepSpeed is enabled.")
-        # # 优化配置
-        # optimizer = Adam(
-        #     self.actor.parameters(),
-        #     lr=self.config.actor.optimizer.lr,
-        #     betas=(0.9, 0.95),
-        #     weight_decay=0.01
-        # )
         param_to_name = {param: name for name, param in self.actor.named_parameters()}
 
         trainable = [param_to_name.get(param) for param in self.actor.parameters() if param.requires_grad]
@@ -244,11 +232,6 @@ class MegatronDeepSpeedPPOTrainer:
             )
             print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
-        # # 优化配置
-        # critic_optimizer = Adam(
-        #     self.critic.parameters(),
-        #     lr=self.config.critic.optimizer.lr,
-        # )
         critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
                                                   model_chunks=[self.critic])
         critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
@@ -271,25 +254,8 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.critic.critic_value_head = lambda *args, **kwargs: None
         else:
-            # value_head_param_ids = {id(param) for param in self.critic.value_head.parameters()}
-            # final_filtered_groups = []
-            # for param_group in filtered_param_groups_critic:
-            #     # 筛选属于value_head的参数
-            #     filtered_params = [p for p in param_group['params'] if id(p) in value_head_param_ids]
-            #     if filtered_params:
-            #         new_param_group = param_group.copy()
-            #         new_param_group['params'] = filtered_params
-            #         final_filtered_groups.append(new_param_group)
 
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
-            # self.critic_value_head, self.critic_optimizer, _, _ = deepspeed.initialize(
-            #     model=self.critic.value_head,
-            #     optimizer=critic_optimizer.optimizer,
-            #     model_parameters=self.critic.value_head.parameters(),
-            #     config=deepspeed_dict,
-            #     lr_scheduler=critic_opt_param_scheduler,
-            #     # model_parameters=self.critic.parameters()
-            # )
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
                 optimizer=critic_optimizer.optimizer,
@@ -738,12 +704,6 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
-
-        # log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
-        # # 提取生成部分（prompt 之后）的 log prob
-        # gen_log_probs = log_probs[:, prompt_len - 1:-1, :]
-        # gen_token_ids = outputs[:, prompt_len:]
-        # gen_log_probs = gen_log_probs.gather(2, gen_token_ids.unsqueeze(-1)).squeeze(-1)
 
         log_probs.to('cpu')
         # add empty cache after each compute
