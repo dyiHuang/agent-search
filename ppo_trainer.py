@@ -347,7 +347,7 @@ class MegatronDeepSpeedPPOTrainer:
         # inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=512)
         input_ids = batch["input_ids"].to('cuda')
         # debug
-        input_ids = self.tokenizer.encode("Hello World!", return_tensors="pt").to('cuda')
+        # input_ids = self.tokenizer.encode("Hello World!", return_tensors="pt").to('cuda')
         attention_mask = batch["attention_mask"].to('cuda')
         prompt_len = input_ids.shape[1]
 

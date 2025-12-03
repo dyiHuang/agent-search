@@ -1815,6 +1815,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 micro_batch_size=self.micro_batch_size,
                 forward_only=forward_only,
             )
+        if inference_context is not None:
+            inference_context.reset_batch_size_offset()
         # loss_reduces contains the stats returned from loss_func
         return losses_reduced
 
