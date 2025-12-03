@@ -1264,7 +1264,7 @@ class Qwen2MegatronModel(MegatronModule):
         for step in range(num_steps):
             utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
 
-            if next_token is None and inference_context is not None:
+            if next_token is not None and inference_context is not None:
                 _input = next_token
             else:
                 _input = current_input
