@@ -828,15 +828,8 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
             logits = logits.float()
-            self.increment_sequence_len_offset(inference_context, seq_len)
             return logits
-        self.increment_sequence_len_offset(inference_context, seq_len)
         return hidden_states
-
-    @staticmethod
-    def increment_sequence_len_offset(inference_context, seq_len):
-        if inference_context is not None:
-            inference_context.increment_sequence_len_offset(seq_len)
 
     def create_mask_mapping(self, attention_mask, cache_position, hidden_states, inference_context,
                             seq_len):
@@ -985,6 +978,9 @@ class Qwen2MegatronModel(MegatronModule):
             # g. 保存生成的token
             generated_ids[:, step] = next_token.squeeze(1)
 
+            if inference_context is not None:
+                inference_context.increment_sequence_len_offset(current_input_ids.size(1))
+
             # h. 更新attention_mask（新增token的mask为True）
             # new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
             new_attention_mask = torch.where(finished_mask.unsqueeze(1),
@@ -996,7 +992,6 @@ class Qwen2MegatronModel(MegatronModule):
             if finished_mask.all():
                 break
 
-        inference_context.increment_batch_size_offset(batch_size)
         return generated_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
@@ -1294,6 +1289,8 @@ class Qwen2MegatronModel(MegatronModule):
             # 采样
             next_token = torch.multinomial(probs, num_samples=1)
             utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
+
+            inference_context.increment_sequence_len_offset(_input.size(1))
 
             # 更新输入
             current_input = torch.cat([current_input, next_token], dim=1)
@@ -1788,6 +1785,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             micro_batch = next(batch_iter)
             output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
                            only_last_token=only_last_token, inference_context=inference_context)
+            if inference_context is not None:
+                inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
             return output, partial(loss_func, data=batch)
 
         # batch should be a list of batches inside micro-batches
