@@ -1312,8 +1312,8 @@ class Qwen2MegatronModel(MegatronModule):
             "How to encode two strings with Qwen2TokenizerFast?"
         ]
         if tokenizer is not None:
-            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=512).to('cuda')
-            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=512).to('cuda')
+            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=128).to('cuda')
+            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=128).to('cuda')
             input_ids = torch.cat((input_ids1, input_ids2), dim=0)
         else:
             # 如果没有tokenizer，使用简单数字
