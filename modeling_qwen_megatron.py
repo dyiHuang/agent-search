@@ -1305,14 +1305,15 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0("🚀 开始全面调试...")
 
         # 使用固定的简单输入
-        test_prompt = "Hello"
+        test_prompt = f"system\nYou are a helpful assistant.\nuser\nAnswer the given question. You must conduct reasoning inside <think> and </think> first every time you get new information. After reasoning, if you find you lack some knowledge, you can call a search engine by <search> query </search> and it will return the top searched results between <information> and </information>. You can search as many times as your want. If you find no further external knowledge needed, you can directly provide the answer inside <answer> and </answer>, without detailed illustrations. For example, <answer> Beijing </answer>. Question: The actress who portrayed Luna Lovegood also starred in an unfinished independent thriller drama based on the true story of who?\n\nassistant"
         if tokenizer is not None:
-            input_ids = tokenizer.encode(test_prompt, return_tensors="pt").to('cuda')
+            input_ids = tokenizer.encode([test_prompt, test_prompt], return_tensors="pt").to('cuda')
         else:
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
 
         utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+        utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
 
         # 1. 详细前向传播
         # utils.print_rank_0("\n" + "=" * 50)
@@ -1324,7 +1325,7 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0("\n" + "=" * 50)
         utils.print_rank_0("2. 生成过程采样检查")
         utils.print_rank_0("=" * 50)
-        generated = self.debug_generation_sampling(input_ids, num_steps=10)
+        generated = self.debug_generation_sampling(input_ids, num_steps=100)
 
         # 3. 验证最终输出
         if tokenizer is not None:
