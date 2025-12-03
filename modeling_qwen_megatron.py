@@ -1312,7 +1312,7 @@ class Qwen2MegatronModel(MegatronModule):
             "How to encode two strings with Qwen2TokenizerFast?"
         ]
         if tokenizer is not None:
-            input_ids = tokenizer(str_list, return_tensors="pt", padding=True, ).to('cuda')
+            input_ids = tokenizer(str_list, return_tensors="pt", padding=True, truncation=True,).to('cuda')
         else:
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
