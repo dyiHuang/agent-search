@@ -828,10 +828,15 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
             logits = logits.float()
-            inference_context.increment_sequence_len_offset(seq_len)
+            self.increment_sequence_len_offset(inference_context, seq_len)
             return logits
-        inference_context.increment_sequence_len_offset(seq_len)
+        self.increment_sequence_len_offset(inference_context, seq_len)
         return hidden_states
+
+    @staticmethod
+    def increment_sequence_len_offset(inference_context, seq_len):
+        if inference_context is not None:
+            inference_context.increment_sequence_len_offset(seq_len)
 
     def create_mask_mapping(self, attention_mask, cache_position, hidden_states, inference_context,
                             seq_len):
