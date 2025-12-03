@@ -150,7 +150,7 @@ class OnlineSearchEngine:
 
     def _retrieve_context(self, query: str) -> List[str]:
 
-        return [""]
+        return ["404 not found!"]
 
         search_results = self.search(query)
         if self.config.snippet_only:

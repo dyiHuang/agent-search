@@ -6,7 +6,7 @@ data:
   val_files: ./data/test.parquet
   prompt_key: prompt
   max_prompt_length: 4096
-  max_response_length: 20
+  max_response_length: 50
   max_start_length: 2048
   train_batch_size: ${global_batch_size}
   val_batch_size: 256
@@ -80,7 +80,7 @@ megatron:
   seed: 1
 
 do_search: True   # online search
-max_turns: 1
+max_turns: 2
 
 actor:
   strategy: megatron  # This is for backward-compatibility
@@ -130,7 +130,7 @@ critic:
     override_opt_param_scheduler: False
 
 rollout:
-  max_new_token: 22
+  max_new_token: 52
   temperature: 1.0
   top_k: 5
 
