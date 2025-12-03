@@ -104,7 +104,7 @@ class Qwen2DotProductAttention(DotProductAttention):
         # =========================
 
         # [b, sq, np, hn] --> [sq, b, np, hn]
-        context = attn_output.permute(0, 1).contiguous()
+        context = attn_output.permute(1, 0, 2, 3).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
         new_context_shape = context.size()[:-2] + (self.hidden_size_per_partition,)
@@ -236,7 +236,8 @@ class Qwen2MegatronAttention(SelfAttention):
         o_proj_w, o_proj_b = self.linear_proj.weight, self.linear_proj.bias
         print(f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
         print(f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
-        print(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
+        if o_proj_b is not None:
+            print(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
 
         return output, bias
 
