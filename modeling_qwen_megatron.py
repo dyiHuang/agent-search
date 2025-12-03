@@ -828,16 +828,10 @@ class Qwen2MegatronModel(MegatronModule):
                 logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
             logits = logits.float()
-            self.increment_inference_ctx_size(inference_context, logits.size(0), seq_len)
-            return logits
-        self.increment_inference_ctx_size(inference_context, hidden_states.size(1), seq_len)
-        return hidden_states
-
-    @staticmethod
-    def increment_inference_ctx_size(inference_context, batch_size, seq_len):
-        if inference_context is not None:
             inference_context.increment_sequence_len_offset(seq_len)
-            inference_context.increment_batch_size_offset(batch_size)
+            return logits
+        inference_context.increment_sequence_len_offset(seq_len)
+        return hidden_states
 
     def create_mask_mapping(self, attention_mask, cache_position, hidden_states, inference_context,
                             seq_len):
@@ -997,6 +991,7 @@ class Qwen2MegatronModel(MegatronModule):
             if finished_mask.all():
                 break
 
+        inference_context.increment_batch_size_offset(batch_size)
         return generated_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
@@ -1256,7 +1251,7 @@ class Qwen2MegatronModel(MegatronModule):
         current_input = input_ids
         attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
 
-        batch_size, max_sequence_length = 1, num_steps
+        batch_size, max_sequence_length = input_ids.size(0), num_steps
         inference_context = StaticInferenceContext(
             batch_size, max_sequence_length
         )
