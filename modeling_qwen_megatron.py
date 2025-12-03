@@ -418,8 +418,8 @@ class Qwen2MegatronAttention(SelfAttention):
             sequence_start = inference_context.sequence_len_offset
             sequence_end = sequence_start + key.size(0)
             assert sequence_end <= inference_key_memory.size(0), (
-                "Current sequence length is longer than expected maximum sequence length! "
-                "Increase inference_max_seq_length."
+                f"Current sequence length = {sequence_end} is longer than expected maximum sequence length! "
+                f"Increase inference_max_seq_length = {inference_key_memory.size(0)}."
             )
 
         if self.config.flash_decode:
