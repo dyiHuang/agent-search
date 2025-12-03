@@ -1251,7 +1251,7 @@ class Qwen2MegatronModel(MegatronModule):
         current_input = input_ids
         attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
 
-        batch_size, max_sequence_length = input_ids.size(0), num_steps
+        batch_size, max_sequence_length = input_ids.size(0), input_ids.size(1) + num_steps
         inference_context = StaticInferenceContext(
             batch_size, max_sequence_length
         )
