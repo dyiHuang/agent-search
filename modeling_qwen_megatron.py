@@ -6,7 +6,6 @@ from torch import Tensor
 import torch.nn as nn
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core import parallel_state, tensor_parallel, pipeline_parallel
-from megatron.core.models.huggingface import qwen_model
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.transformer_layer import TransformerConfig, TransformerLayer, TransformerLayerSubmodules
@@ -14,9 +13,7 @@ from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubm
 from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.spec_utils import ModuleSpec
-from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.enums import AttnMaskType
-from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
 from megatron.core.enums import ModelType
 from peft import LoraConfig, get_peft_model
@@ -28,7 +25,7 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding, eager
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
-from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
+from transformers.masking_utils import create_causal_mask
 from transformers.cache_utils import Cache, DynamicCache
 from megatron.core.packed_seq_params import PackedSeqParams
 
@@ -41,12 +38,9 @@ import qwen_load
 from tensordict import TensorDict
 
 from megatron.core.utils import (
-    get_tensor_model_parallel_group_if_none,
     deprecate_inference_params,
     is_te_min_version,
-    get_pg_rank,
     nvtx_range_pop,
-    make_viewless_tensor,
     nvtx_range_push,
 )
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -79,9 +73,9 @@ class Qwen2DotProductAttention(DotProductAttention):
         key = key.transpose(0, 1).transpose(1, 2).contiguous()
         value = value.transpose(0, 1).transpose(1, 2).contiguous()
 
-        print(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
-        print(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
-        print(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
+        utils.print_rank_0(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
+        utils.print_rank_0(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        utils.print_rank_0(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
         # [b, sq, np, hn]
         attn_output, attn_weights = attention_interface(
@@ -96,7 +90,7 @@ class Qwen2DotProductAttention(DotProductAttention):
             # **kwargs,
         )
 
-        print(
+        utils.print_rank_0(
             f"dp attn_output - 形状: {attn_output.shape}, 均值: {attn_output.mean():.6f}, 标准差: {attn_output.std():.6f}")
 
         # =========================
@@ -201,8 +195,8 @@ class Qwen2MegatronAttention(SelfAttention):
         # ================================================
         nvtx_range_push(suffix="rotary_pos_emb")
         cos, sin = rotary_pos_emb
-        print(f"Qwen2MegatronAttention cos - 形状: {cos.shape}, mean: [{cos.mean():.6f}, std: {cos.std():.6f}]")
-        print(f"Qwen2MegatronAttention sin - 形状: {sin.shape}, mean: [{sin.mean():.6f}, std: {sin.std():.6f}]")
+        # utils.print_rank_0(f"Qwen2MegatronAttention cos - 形状: {cos.shape}, mean: [{cos.mean():.6f}, std: {cos.std():.6f}]")
+        # utils.print_rank_0(f"Qwen2MegatronAttention sin - 形状: {sin.shape}, mean: [{sin.mean():.6f}, std: {sin.std():.6f}]")
         query = query.transpose(0, 1)
         key = key.transpose(0, 1)
         query, key = apply_rotary_pos_emb(query, key, cos, sin, unsqueeze_dim=2)
@@ -234,10 +228,10 @@ class Qwen2MegatronAttention(SelfAttention):
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix="linear_proj")
         o_proj_w, o_proj_b = self.linear_proj.weight, self.linear_proj.bias
-        print(f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
-        print(f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
+        utils.print_rank_0(f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
+        utils.print_rank_0(f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
         if o_proj_b is not None:
-            print(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
+            utils.print_rank_0(f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
 
         return output, bias
 
@@ -246,7 +240,7 @@ class Qwen2MegatronAttention(SelfAttention):
         Derives `query`, `key` and `value` tensors from `hidden_states`. If `split_qkv=False`, then
         the unsplit mixed_qkv tensor is returned.
         """
-        print(
+        utils.print_rank_0(
             f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
         # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
         mixed_qkv, _ = self.linear_qkv(hidden_states)
@@ -290,26 +284,15 @@ class Qwen2MegatronAttention(SelfAttention):
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.weight, p_split_arg_list, dim=0)
 
-        # print(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        print(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
-        # print(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
+        # utils.print_rank_0(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        utils.print_rank_0(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # utils.print_rank_0(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.bias, p_split_arg_list, dim=0)
 
-        # print(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        print(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
-        # print(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
-
-        # # Return unsplit mixed_qkv and split_arg_list
-        # if not split_qkv:
-        #     return mixed_qkv, split_arg_list
-        #
-        # # [sq, b, ng, (np/ng + 2) * hn]
-        # # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
-        # (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=3)
-        #
-        # # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
-        # query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
+        # utils.print_rank_0(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
+        utils.print_rank_0(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # utils.print_rank_0(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         query = q.reshape(q.size(0), q.size(1), self.num_attention_heads_per_partition,
                           self.hidden_size_per_attention_head)  # 16 heads, 128 per head
@@ -318,7 +301,7 @@ class Qwen2MegatronAttention(SelfAttention):
         value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition,
                           self.hidden_size_per_attention_head)
 
-        print(f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        utils.print_rank_0(f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
 
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
@@ -371,7 +354,7 @@ class Qwen2MegatronAttention(SelfAttention):
 
         attn_mask_type = self.attn_mask_type
         if inference_context is None:
-            print(f"_adjust_key_value_for_inference: inference_context is None")
+            utils.print_rank_0(f"_adjust_key_value_for_inference: inference_context is None")
             return query, key, value, rotary_pos_emb, attn_mask_type, None
 
         # =================================================
@@ -504,14 +487,14 @@ class Qwen2RMSNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         input_dtype = hidden_states.dtype
-        print(f"megatron Qwen2RMSNorm input_dtype: dtype={input_dtype}")
+        # utils.print_rank_0(f"megatron Qwen2RMSNorm input_dtype: dtype={input_dtype}")
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        print(
-            f"megatron Qwen2RMSNorm hidden_states: dtype={hidden_states.dtype} shape={hidden_states.shape}, mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
-        print(
-            f"megatron Qwen2RMSNorm weight: dtype={self.weight.dtype} shape={self.weight.shape}, mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
+        # utils.print_rank_0(
+        #     f"megatron Qwen2RMSNorm hidden_states: dtype={hidden_states.dtype} shape={hidden_states.shape}, mean={hidden_states.mean():.6f}, std={hidden_states.std():.6f}")
+        # utils.print_rank_0(
+        #     f"megatron Qwen2RMSNorm weight: dtype={self.weight.dtype} shape={self.weight.shape}, mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
         return self.weight * hidden_states.to(input_dtype)
 
     def extra_repr(self):
@@ -631,9 +614,8 @@ class Qwen2MegatronTransformerLayer(TransformerLayer):
             output (Tensor): Transformed hidden states of shape [s, b, h].
         """
 
-        # [sq, b, h]
         # Residual connection.
-        residual = hidden_states
+        residual = hidden_states # [sq, b, h]
 
         # Optional Layer norm post the cross-attention.
         if self.recompute_pre_mlp_layernorm:
@@ -744,9 +726,6 @@ class Qwen2MegatronModel(MegatronModule):
 
         # Rotary Embedding：仅 PP stage 0 计算（后续 stage 复用或传递）
         # Rotary Embedding (Qwen2.5标准实现)
-        # self.rotary_emb = RotaryEmbedding(
-        #     megatron_config.kv_channels, rotary_percent=1.0, seq_len_interpolation_factor=1.0
-        # )
         self.rotary_emb = Qwen2RotaryEmbedding(config=qwen_config)
 
         # Transformer 层：仅初始化当前 stage 负责的层（核心 PP 拆分）
@@ -842,7 +821,7 @@ class Qwen2MegatronModel(MegatronModule):
             }
 
         seq_len = hidden_states.size(1)
-        print(f"Qwen2MegatronModel forward seq_len={seq_len}")
+        utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
@@ -850,7 +829,7 @@ class Qwen2MegatronModel(MegatronModule):
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         hidden_states = hidden_states.transpose(1, 0).contiguous()
         for layer in self.layers:
-            print(
+            utils.print_rank_0(
                 f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
             hidden_states = layer(
                 hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb
@@ -1875,6 +1854,13 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     #     model = get_peft_model(model, lora_config)
     #     model.print_trainable_parameters() # 验证 LoRa 训练参数占比（通常 <1%）
 
+    # diff_model_param(hf_model, is_critic, model)
+
+    # run_comprehensive_debug(hf_model, tokenizer)
+    return model
+
+
+def diff_model_param(hf_model, is_critic, model):
     diffs = utils.find_tensor_diff(hf_model.model.embed_tokens.weight, model.embedding.weight)
     utils.print_rank_0(f"model.embedding.weight差异位置：{diffs}")
     for i in range(len(hf_model.model.layers)):
@@ -1907,15 +1893,11 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         diffs = utils.find_tensor_diff(hf_model.model.layers[i].post_attention_layernorm.weight,
                                        model.layers[i].pre_mlp_layernorm.weight)
         utils.print_rank_0(f"model.layers[{i}].pre_mlp_layernorm.weight：{diffs}")
-
     diffs = utils.find_tensor_diff(hf_model.model.norm.weight, model.final_norm.weight)
     utils.print_rank_0(f"model.final_norm.weight差异位置：{diffs}")
     if not is_critic:
         diffs = utils.find_tensor_diff(hf_model.lm_head.weight, model.lm_head.weight)
         utils.print_rank_0(f"model.lm_head.weight差异位置：{diffs}")
-
-    run_comprehensive_debug(hf_model, tokenizer)
-    return model
 
 
 def get_params_dtype(config):
