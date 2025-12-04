@@ -1904,7 +1904,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
 
     # diff_model_param(hf_model, is_critic, model)
 
-    # run_comprehensive_debug(hf_model, tokenizer)
+    run_comprehensive_debug(hf_model, tokenizer)
     return model
 
 
@@ -2099,16 +2099,16 @@ def run_comprehensive_debug(self, tokenizer):
     utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
 
     # 1. 详细前向传播
-    utils.print_rank_0("\n" + "=" * 50)
-    utils.print_rank_0("1. 详细前向传播检查")
-    utils.print_rank_0("=" * 50)
-    logits = detailed_forward_debug(self, input_ids)
+    # utils.print_rank_0("\n" + "=" * 50)
+    # utils.print_rank_0("1. 详细前向传播检查")
+    # utils.print_rank_0("=" * 50)
+    # logits = detailed_forward_debug(self, input_ids)
 
     # # 2. 生成过程采样检查
     utils.print_rank_0("\n" + "=" * 50)
     utils.print_rank_0("2. 生成过程采样检查")
     utils.print_rank_0("=" * 50)
-    generated = debug_generation_sampling(self, input_ids, num_steps=10)
+    generated = debug_generation_sampling(self, input_ids, num_steps=100)
 
     # 3. 验证最终输出
     if tokenizer is not None:
@@ -2118,12 +2118,12 @@ def run_comprehensive_debug(self, tokenizer):
         utils.print_rank_0(f"\n最终生成token: {generated[0].cpu().numpy()}")
 
     # # 运行这些调试函数来定位具体问题
-    debug_attention_mechanism(self, input_ids)
+    # debug_attention_mechanism(self, input_ids)
     # self.debug_residual_connections(input_ids)
     # self.debug_lm_head_output(input_ids)
 
     # 运行这些调试来确认问题
-    debug_mlp_implementation(self, input_ids)
+    # debug_mlp_implementation(self, input_ids)
     # self.check_mlp_weights(layer_idx=2)
 
     utils.print_rank_0("✅ hf_model 全面调试完成")
@@ -2335,14 +2335,23 @@ def debug_generation_sampling(self, input_ids, num_steps=3):
 
     current_input = input_ids
     attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+    batch_size, max_sequence_length = input_ids.size(0), input_ids.size(1) + num_steps
+    inference_context = StaticInferenceContext(
+        batch_size, max_sequence_length
+    )
 
+    next_token = None
     for step in range(num_steps):
         utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
+        _input = current_input
+        if inference_context is not None and next_token is not None:
+            _input = next_token
 
         # 前向传播获取logits
         with torch.no_grad():
             output = self.forward(
-                input_ids=current_input,
+                input_ids=_input,
+                inference_context=inference_context,
             )
         logits = output.logits
         utils.print_rank_0(f"Logits形状: {logits.shape}")
@@ -2366,6 +2375,7 @@ def debug_generation_sampling(self, input_ids, num_steps=3):
         # 更新输入
         current_input = torch.cat([current_input, next_token], dim=1)
         attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
+        inference_context.increment_sequence_len_offset(_input.size(1))
 
         utils.print_rank_0(f"更新后输入长度: {current_input.shape[1]}")
 
