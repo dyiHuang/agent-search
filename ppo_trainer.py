@@ -77,6 +77,9 @@ class MegatronDeepSpeedPPOTrainer:
         # 确保参数可训练
         for param in self.critic.value_head.parameters():
             param.requires_grad = True
+
+        # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
+        self._init_deepspeed()
         self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                     qwen_model_path=config.qwen_model_path)
         self.reference.eval()
@@ -91,8 +94,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
-        # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
-        self._init_deepspeed()
+
 
     def _init_logger(self):
         from utils.tracking import Tracking
