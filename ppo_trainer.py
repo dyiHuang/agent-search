@@ -408,7 +408,8 @@ class MegatronDeepSpeedPPOTrainer:
                                            dtype=attention_mask.dtype)
 
         # 计算 reference 的 log_prob
-        ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
+        # ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
+        ref_log_probs = None
 
         # 解码第一条输入，确认无乱码
         dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
