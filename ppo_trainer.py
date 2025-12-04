@@ -195,6 +195,9 @@ class MegatronDeepSpeedPPOTrainer:
         # if len(trainable) > 5:
         #     print(f"first 5 actor trainable params: {trainable[0:5]}")
 
+        for param in self.actor.parameters():
+            utils.print_rank_0(f"actor param:{param}")
+
         parallel_state_patch.add_missing_mpu_methods()
 
         actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
