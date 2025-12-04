@@ -136,7 +136,7 @@ rollout:
 
 retriever:
   url: http://127.0.0.1:8000/retrieve
-  topk: 3
+  topk: -1
 
 trainer:
   total_epochs: 3
