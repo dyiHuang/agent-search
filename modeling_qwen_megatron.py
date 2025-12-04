@@ -2335,23 +2335,13 @@ def debug_generation_sampling(self, input_ids, num_steps=3):
 
     current_input = input_ids
     attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
-    batch_size, max_sequence_length = input_ids.size(0), input_ids.size(1) + num_steps
-    inference_context = StaticInferenceContext(
-        batch_size, max_sequence_length
-    )
 
-    next_token = None
     for step in range(num_steps):
         utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
-        _input = current_input
-        if inference_context is not None and next_token is not None:
-            _input = next_token
-
         # 前向传播获取logits
         with torch.no_grad():
             output = self.forward(
-                input_ids=_input,
-                inference_context=inference_context,
+                input_ids=current_input,
             )
         logits = output.logits
         utils.print_rank_0(f"Logits形状: {logits.shape}")
@@ -2375,7 +2365,6 @@ def debug_generation_sampling(self, input_ids, num_steps=3):
         # 更新输入
         current_input = torch.cat([current_input, next_token], dim=1)
         attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
-        inference_context.increment_sequence_len_offset(_input.size(1))
 
         utils.print_rank_0(f"更新后输入长度: {current_input.shape[1]}")
 
