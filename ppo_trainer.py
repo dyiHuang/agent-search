@@ -233,11 +233,11 @@ class MegatronDeepSpeedPPOTrainer:
             # 初始化 DeepSpeed 引擎
             self.actor, self.optimizer, _, _ = deepspeed.initialize(
                 model=self.actor,
-                optimizer=actor_optimizer.optimizer,
+                # optimizer=actor_optimizer.optimizer,
                 config=deepspeed_dict,
                 mpu=parallel_state,
                 lr_scheduler=opt_param_scheduler,
-                # model_parameters=self.actor.parameters()
+                model_parameters=self.actor.parameters()
             )
             print(
                 f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
