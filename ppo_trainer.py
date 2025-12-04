@@ -205,6 +205,9 @@ class MegatronDeepSpeedPPOTrainer:
         opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
         assert isinstance(actor_optimizer, ChainedOptimizer)
 
+        for param in self.actor.parameters():
+            utils.print_rank_0(f"actor param:{param}")
+
         # 将 config.deepspeed 转换为 dict
         # resolve=True 表示在转换前解析所有变量插值
         deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
