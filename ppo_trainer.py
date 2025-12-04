@@ -229,7 +229,7 @@ class MegatronDeepSpeedPPOTrainer:
         #     self.actor.step = lambda *args, **kwargs: None
         # else:
 
-        actor_optimizer.optimizer.param_groups = filtered_param_groups
+        # actor_optimizer.optimizer.param_groups = filtered_param_groups
         # 初始化 DeepSpeed 引擎
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
             model=self.actor,
