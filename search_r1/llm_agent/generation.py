@@ -1,3 +1,5 @@
+import json
+
 import torch
 import re
 from typing import List, Dict, Any, Tuple
@@ -183,7 +185,7 @@ class LLMGenerationManager:
         if num_gpus <= 1:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token+prompt_len,
+                max_length=self.g_config.rollout.max_new_token + prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                 pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                 temperature=self.g_config.rollout.temperature,
@@ -199,14 +201,13 @@ class LLMGenerationManager:
         batch_size = active_batch['input_ids'].shape[0]
         remainder = batch_size % num_gpus
 
-
         for key in active_batch.keys():
             if isinstance(active_batch[key], torch.Tensor):
                 active_batch[key] = active_batch[key].long()
         if remainder == 0:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token+prompt_len,
+                max_length=self.g_config.rollout.max_new_token + prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
                 pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
                 temperature=self.g_config.rollout.temperature,
@@ -236,7 +237,7 @@ class LLMGenerationManager:
         # Generate with padded batch
         padded_output = self.actor.generate(
             input_ids=padded_active_batch["input_ids"].to('cuda'),
-            max_length=self.g_config.rollout.max_new_token+prompt_len,
+            max_length=self.g_config.rollout.max_new_token + prompt_len,
             eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
             pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
             temperature=self.g_config.rollout.temperature,
@@ -260,9 +261,9 @@ class LLMGenerationManager:
 
         padded_output = trimmed_batch
         return {
-                "input_ids": padded_output,
-                "responses": padded_output[:, prompt_len:],
-            }
+            "input_ids": padded_output,
+            "responses": padded_output[:, prompt_len:],
+        }
 
     def run_llm_loop(self, gen_batch, initial_input_ids: torch.Tensor) -> Tuple[Dict, Dict]:
         """Run main LLM generation loop."""
@@ -507,9 +508,25 @@ If I want to give the final answer, I should put the answer between <answer> and
     def _passages2string(self, retrieval_result):
         format_reference = ''
         for idx, doc_item in enumerate(retrieval_result):
-            content = doc_item['document']['contents']
-            title = content.split("\n")[0]
-            text = "\n".join(content.split("\n")[1:])
+            document = doc_item.get('document', '')
+            if isinstance(document, dict):
+                # 场景：document是字典，取contents
+                content = doc_item['document']['contents']
+                title = content.split("\n")[0]
+                text = "\n".join(content.split("\n")[1:])
+            elif isinstance(document, str):
+                # 尝试解析JSON字符串
+                try:
+                    doc_dict = json.loads(document)
+                    content = doc_dict.get('contents', document).strip()
+                except:
+                    # 解析失败则直接用原字符串
+                    content = document.strip()
+                text = "\n".join(content.split("\n")[1:])
+                title = "_title_"
+            else:
+                text = "_content_"
+                title = "_title_"
             format_reference += f"Doc {idx + 1}(Title: {title}) {text}\n"
 
         return format_reference
