@@ -31,7 +31,6 @@ from megatron.core.packed_seq_params import PackedSeqParams
 
 from utils import utils, torch_functional
 from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel_compute_entropy_loss
-from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
 
 import core_algos
 import qwen_load
@@ -105,6 +104,44 @@ class Qwen2DotProductAttention(DotProductAttention):
         context = context.view(*new_context_shape)
 
         return context
+
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, rotary_pos_emb_q, rotary_pos_emb_k, unsqueeze_dim=1):
+    """Applies Rotary Position Embedding to the query and key tensors.
+
+    Args:
+        q (`torch.Tensor`): The query tensor.
+        k (`torch.Tensor`): The key tensor.
+        cos (`torch.Tensor`): The cosine part of the rotary embedding.
+        sin (`torch.Tensor`): The sine part of the rotary embedding.
+        :param rotary_pos_emb_q:
+        :param rotary_pos_emb_k:
+        unsqueeze_dim (`int`, *optional*, defaults to 1):
+            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
+            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
+            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
+            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
+            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
+            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
+    Returns:
+        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
+    """
+    cos_q, sin_q = rotary_pos_emb_q
+    cos_k, sin_k = rotary_pos_emb_k
+    cos_q = cos_q.unsqueeze(unsqueeze_dim)
+    sin_q = sin_q.unsqueeze(unsqueeze_dim)
+    cos_k = cos_k.unsqueeze(unsqueeze_dim)
+    sin_k = sin_k.unsqueeze(unsqueeze_dim)
+    q_embed = (q * cos_q) + (rotate_half(q) * sin_q)
+    k_embed = (k * cos_k) + (rotate_half(k) * sin_k)
+    return q_embed, k_embed
 
 
 class Qwen2MegatronAttention(SelfAttention):
@@ -211,12 +248,11 @@ class Qwen2MegatronAttention(SelfAttention):
         # relative positional embedding (rotary embedding)
         # ================================================
         nvtx_range_push(suffix="rotary_pos_emb")
-        cos, sin = rotary_pos_emb
         # utils.print_rank_0(f"Qwen2MegatronAttention cos - 形状: {cos.shape}, mean: [{cos.mean():.6f}, std: {cos.std():.6f}]")
         # utils.print_rank_0(f"Qwen2MegatronAttention sin - 形状: {sin.shape}, mean: [{sin.mean():.6f}, std: {sin.std():.6f}]")
         query = query.transpose(0, 1)
         key = key.transpose(0, 1)
-        query, key = apply_rotary_pos_emb(query, key, cos, sin, unsqueeze_dim=2)
+        query, key = apply_rotary_pos_emb(query, key, rotary_pos_emb[0], rotary_pos_emb[1], unsqueeze_dim=2)
         query = query.transpose(0, 1)
         key = key.transpose(0, 1)
         nvtx_range_pop(suffix="rotary_pos_emb")
@@ -375,6 +411,8 @@ class Qwen2MegatronAttention(SelfAttention):
 
         attn_mask_type = self.attn_mask_type
         if inference_context is None:
+            cos_emb, sin_emb = rotary_pos_emb  # [1, s, h]
+            rotary_pos_emb = ((cos_emb, sin_emb), (cos_emb, sin_emb))
             return query, key, value, rotary_pos_emb, attn_mask_type, None
 
         # =================================================
@@ -429,14 +467,16 @@ class Qwen2MegatronAttention(SelfAttention):
             rotary_pos_sin_q = None
 
         # Adjust rotary embeddings.
-        # if rotary_pos_emb is not None:
-        #     q_pos_emb, k_pos_emb = rotary_pos_emb
-        #     if inference_context.is_static_batching():
-        #         q_pos_emb = q_pos_emb[sequence_start:sequence_end, :, :, :]
-        #         k_pos_emb = k_pos_emb[:sequence_end, :, :, :]
-        #     else:
-        #         pass
-        #     rotary_pos_emb = (q_pos_emb, k_pos_emb)
+        if rotary_pos_emb is not None:
+            cos_emb, sin_emb = rotary_pos_emb  # [1, s, h]
+            if inference_context.is_static_batching():
+                q_cos_emb = cos_emb[:, sequence_start:sequence_end, :, :]
+                q_sin_emb = sin_emb[:, sequence_start:sequence_end, :, :]
+                k_cos_emb = cos_emb[:, :sequence_end, :, :]
+                k_sin_emb = sin_emb[:, :sequence_end, :, :]
+                rotary_pos_emb = ((q_cos_emb, q_sin_emb), (k_cos_emb, k_sin_emb))
+            else:
+                rotary_pos_emb = ((cos_emb, sin_emb), (cos_emb, sin_emb))
 
         block_table = None
         if inference_context.is_static_batching():
@@ -788,7 +828,9 @@ class Qwen2MegatronModel(MegatronModule):
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
         )
-        position_ids = cache_position.unsqueeze(0)
+        position_ids = torch.arange(
+            0, past_seen_tokens + seq_len, device=hidden_states.device
+        ).unsqueeze(0)
 
         causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
                                                        inference_context, seq_len)
