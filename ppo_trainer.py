@@ -211,6 +211,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
         filtered_param_groups = []
+        utils.print_rank_0(f"{actor_optimizer.optimizer.param_groups}")
         for param_group in actor_optimizer.optimizer.param_groups:
             trainable = sum(1 for param in param_group['params'] if param.requires_grad)
             # 检查这个 group 的 'params' 列表是否为空
