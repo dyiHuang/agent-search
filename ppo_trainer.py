@@ -351,10 +351,6 @@ class MegatronDeepSpeedPPOTrainer:
         attention_mask = batch["attention_mask"].to('cuda')
         prompt_len = input_ids.shape[1]
 
-        # 解码第一条输入，确认无乱码
-        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
-        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
-
         # 生成 response（actor模型）
         with torch.no_grad():
             if not self.config.do_search:
@@ -413,6 +409,9 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
+        # 解码第一条输入，确认无乱码
+        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
+        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
         print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
