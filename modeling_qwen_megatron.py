@@ -974,7 +974,7 @@ class Qwen2MegatronModel(MegatronModule):
             # b. 前向传播：仅计算最后一个token的logits（提升效率）
             logits = self.forward_backward_batch(
                 batch=batches,
-                only_last_token=True,  # 关键优化：仅返回最后一个token的logits
+                # only_last_token=True,  # 关键优化：仅返回最后一个token的logits
                 forward_only=True,
                 inference_context=inference_context,
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
@@ -1004,6 +1004,9 @@ class Qwen2MegatronModel(MegatronModule):
 
             # utils.print_rank_0(f"after broadcast, logits shape : {logits.shape}")
 
+            # last token
+            logits = logits[:, -1]  # [batch_size, vocab_size]
+
             # d. 应用温度采样和Top-K过滤
             logits = logits / temperature  # 温度调整
             if top_k is not None and top_k > 0:
@@ -1012,7 +1015,7 @@ class Qwen2MegatronModel(MegatronModule):
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
             next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
-            next_token = torch.multinomial(next_token_log_probs.squeeze(1), num_samples=1)  # [batch_size, 1]
+            next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
 
             utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
