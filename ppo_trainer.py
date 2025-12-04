@@ -532,14 +532,14 @@ class MegatronDeepSpeedPPOTrainer:
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
 
-                self.reference.run_comprehensive_debug(self.tokenizer)
-
-                continue
+                # self.reference.run_comprehensive_debug(self.tokenizer)
+                #
+                # continue
 
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
                 utils.print_rank_0(f"rollout successful:{self.global_steps}, "
-                                   f"responses:{self.tokenizer.decode(responses[0])}")
+                                   f"dialogue:{self.tokenizer.decode(dialogue_ids[0])}")
 
                 continue
 

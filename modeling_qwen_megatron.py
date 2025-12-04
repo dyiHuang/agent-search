@@ -1948,7 +1948,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
 
     # diff_model_param(hf_model, is_critic, model)
 
-    run_comprehensive_debug(hf_model, tokenizer)
+    # run_comprehensive_debug(hf_model, tokenizer)
     return model
 
 
