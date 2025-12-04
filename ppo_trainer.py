@@ -398,7 +398,6 @@ class MegatronDeepSpeedPPOTrainer:
                 mask = final_gen_batch_output[0]['attention_mask'].bool()
                 batch["attention_mask"] = mask
                 batch['prompts'] = final_gen_batch_output[0]['prompts']
-                prompt_len = batch['prompts'].shape[1]
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
@@ -532,14 +531,14 @@ class MegatronDeepSpeedPPOTrainer:
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
 
-                self.actor.run_comprehensive_debug(self.tokenizer)
-
-                continue
+                # self.actor.run_comprehensive_debug(self.tokenizer)
+                #
+                # continue
 
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
                 utils.print_rank_0(f"rollout successful:{self.global_steps}, "
-                                   f"dialogue:{self.tokenizer.decode(dialogue_ids[0])}")
+                                   f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
 
                 continue
 
