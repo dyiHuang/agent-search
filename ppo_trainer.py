@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 from utils import rotary_pos_emb_patch
+
 rotary_pos_emb_patch.apply_patch()
 
 import deepspeed
@@ -35,7 +36,6 @@ from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
 
 
-
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
         self.global_steps = None
@@ -65,17 +65,20 @@ class MegatronDeepSpeedPPOTrainer:
         )
 
         # 3. 构建 PPO 三模型
-        self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path,
+        self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+                                                qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config)
         # 确保参数可训练
-        for param in self.actor.lm_head.parameters():
+        for param in self.actor.parameters():
             param.requires_grad = True
-        self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path,
+        self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+                                                 qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
         # 确保参数可训练
         for param in self.critic.value_head.parameters():
             param.requires_grad = True
-        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path)
+        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+                                                    qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         utils.print_rank_0(self.reference)
         for param in self.reference.parameters():
@@ -141,7 +144,7 @@ class MegatronDeepSpeedPPOTrainer:
                 tensor_model_parallel_size=tp_size,
                 pipeline_model_parallel_size=pp_size,
                 virtual_pipeline_model_parallel_size=None,  # RL/微调场景禁用虚拟流水线
-                order='tp-pp-dp'    # 2-tp 2-pp for megatron 2-dp for deepspeed
+                order='tp-pp-dp'  # 2-tp 2-pp for megatron 2-dp for deepspeed
             )
 
         # 验证并行组（确保与 DeepSpeed 进程组兼容）
@@ -187,10 +190,10 @@ class MegatronDeepSpeedPPOTrainer:
         if len(trainable) > 5:
             print(f"first 5 actor trainable params: {trainable[0:5]}")
 
-        optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
-                                           model_chunks=[self.actor])
-        opt_param_scheduler = get_optimizer_param_scheduler(optimizer, config=self.config.actor.optimizer)
-        assert isinstance(optimizer, ChainedOptimizer)
+        actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
+                                                 model_chunks=[self.actor])
+        opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
+        assert isinstance(actor_optimizer, ChainedOptimizer)
 
         # 将 config.deepspeed 转换为 dict
         # resolve=True 表示在转换前解析所有变量插值
@@ -201,7 +204,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
         filtered_param_groups = []
-        for param_group in optimizer.optimizer.param_groups:
+        for param_group in actor_optimizer.optimizer.param_groups:
             trainable = sum(1 for param in param_group['params'] if param.requires_grad)
             # 检查这个 group 的 'params' 列表是否为空
             if trainable > 0:
@@ -214,20 +217,19 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.actor.step = lambda *args, **kwargs: None
         else:
-            optimizer.optimizer.param_groups = filtered_param_groups
-
+            actor_optimizer.optimizer.param_groups = filtered_param_groups
             parallel_state_patch.add_missing_mpu_methods()
-
             # 初始化 DeepSpeed 引擎
             self.actor, self.optimizer, _, _ = deepspeed.initialize(
                 model=self.actor,
-                optimizer=optimizer.optimizer,
+                optimizer=actor_optimizer.optimizer,
                 config=deepspeed_dict,
                 mpu=parallel_state,
                 lr_scheduler=opt_param_scheduler,
                 # model_parameters=self.actor.parameters()
             )
-            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
         critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
                                                   model_chunks=[self.critic])
@@ -260,7 +262,8 @@ class MegatronDeepSpeedPPOTrainer:
                 lr_scheduler=critic_opt_param_scheduler,
                 # model_parameters=self.critic.parameters()
             )
-            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
 
     # def _load_dataset(self):
     #     """加载分布式数据集（每个 rank 处理部分数据）"""
@@ -402,7 +405,6 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
-
         print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
@@ -486,7 +488,8 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
-            print(f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
             # # 强制检查Actor参数梯度
             # has_grad = False
             # for name, param in self.actor.named_parameters():
@@ -600,13 +603,17 @@ class MegatronDeepSpeedPPOTrainer:
 
     def write_ds_scalars(self, metrics):
         if torch.distributed.get_rank() == 0:
-            writer.add_scalar("train/actor/entropy_loss", np.mean(metrics['actor/entropy_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/entropy_loss", np.mean(metrics['actor/entropy_loss']),
+                              global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
-            writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']),
+                              global_step=self.global_steps)
             writer.add_scalar("train/actor/ppo_kl", np.mean(metrics['actor/ppo_kl']), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_loss", np.mean(metrics['critic/vf_loss']), global_step=self.global_steps)
-            writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']), global_step=self.global_steps)
-            writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']),
+                              global_step=self.global_steps)
+            writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']),
+                              global_step=self.global_steps)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
@@ -733,14 +740,16 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
-            print(f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
             # 强制打印value_head参数的梯度（bfloat16下需注意精度）
             for name, param in self.critic.value_head.named_parameters():
                 if param.grad is None:
                     print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
                 else:
                     grad_norm = param.grad.norm().item()
-                    print(f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+                    print(
+                        f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
             # self.critic_value_head.allreduce_gradients()
             # self.critic_value_head.step(lr_kwargs={'increment': increment})
