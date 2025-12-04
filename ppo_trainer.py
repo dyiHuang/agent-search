@@ -83,13 +83,13 @@ class MegatronDeepSpeedPPOTrainer:
                                                     qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         utils.print_rank_0(self.reference)
-        for param in self.reference.parameters():
+        for name, param in self.reference.named_parameters():
             param.requires_grad = False
             # param.data = param.data.to(torch.float32)
         self.reference.config.enable_autocast = True
         self.reference.config.autocast_dtype = torch.bfloat16
         # 确保参数可训练
-        for param in self.actor.parameters():
+        for name, param in self.actor.named_parameters():
             param.requires_grad = True
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
