@@ -1255,7 +1255,6 @@ class Qwen2MegatronModel(MegatronModule):
         inference_context = StaticInferenceContext(
             batch_size, max_sequence_length
         )
-        inference_context = None
         next_token = None
         for step in range(num_steps):
             utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
@@ -1326,7 +1325,7 @@ class Qwen2MegatronModel(MegatronModule):
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
 
-        utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+        # utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
         utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
 
         # 1. 详细前向传播
@@ -2111,7 +2110,8 @@ def run_comprehensive_debug(self, tokenizer):
         # 如果没有tokenizer，使用简单数字
         input_ids = torch.tensor([[1, 2, 3]], device='cuda')
 
-    utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+    # utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
+    utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
 
     # 1. 详细前向传播
     # utils.print_rank_0("\n" + "=" * 50)
