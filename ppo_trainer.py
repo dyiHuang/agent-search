@@ -195,9 +195,6 @@ class MegatronDeepSpeedPPOTrainer:
         # if len(trainable) > 5:
         #     print(f"first 5 actor trainable params: {trainable[0:5]}")
 
-        for param in self.actor.parameters():
-            utils.print_rank_0(f"actor param:{param}")
-
         parallel_state_patch.add_missing_mpu_methods()
 
         actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
@@ -205,14 +202,14 @@ class MegatronDeepSpeedPPOTrainer:
         opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
         assert isinstance(actor_optimizer, ChainedOptimizer)
 
-        for param in self.actor.parameters():
-            utils.print_rank_0(f"actor param:{param}")
+        # 核心修复：强制开启所有参数的 requires_grad
+        for group in actor_optimizer.optimizer.param_groups:
+            for p in group["params"]:
+                p.requires_grad = True  # 覆盖 Megatron 处理后的状态
 
         # 将 config.deepspeed 转换为 dict
         # resolve=True 表示在转换前解析所有变量插值
         deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
-        # DeepSpeed 配置（从 config dict 加载）
-        ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
 
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
