@@ -68,7 +68,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config)
         # 确保参数可训练
-        for param in self.actor.parameters():
+        for param in self.actor.lm_head.parameters():
             param.requires_grad = True
         self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
@@ -209,7 +209,8 @@ class MegatronDeepSpeedPPOTrainer:
         # 2. 验证过滤后是否还有参数组
         if not filtered_param_groups:
             print(
-                f"[Rank {torch.distributed.get_rank()}] All actor param_groups are empty after filtering. No parameters to "
+                f"[Rank {torch.distributed.get_rank()}] All actor param_groups are empty after filtering. No "
+                f"parameters to"
                 f"optimize.")
             self.actor.step = lambda *args, **kwargs: None
         else:
