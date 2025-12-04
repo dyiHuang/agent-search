@@ -470,10 +470,10 @@ class Qwen2MegatronAttention(SelfAttention):
         if rotary_pos_emb is not None:
             cos_emb, sin_emb = rotary_pos_emb  # [1, s, h]
             if inference_context.is_static_batching():
-                q_cos_emb = cos_emb[:, sequence_start:sequence_end, :, :]
-                q_sin_emb = sin_emb[:, sequence_start:sequence_end, :, :]
-                k_cos_emb = cos_emb[:, :sequence_end, :, :]
-                k_sin_emb = sin_emb[:, :sequence_end, :, :]
+                q_cos_emb = cos_emb[:, sequence_start:sequence_end, :]
+                q_sin_emb = sin_emb[:, sequence_start:sequence_end, :]
+                k_cos_emb = cos_emb[:, :sequence_end, :]
+                k_sin_emb = sin_emb[:, :sequence_end, :]
                 rotary_pos_emb = ((q_cos_emb, q_sin_emb), (k_cos_emb, k_sin_emb))
             else:
                 rotary_pos_emb = ((cos_emb, sin_emb), (cos_emb, sin_emb))
