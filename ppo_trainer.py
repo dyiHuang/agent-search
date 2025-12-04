@@ -68,9 +68,11 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config)
+        utils.print_rank_0(self.actor)
         self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                  qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
+        utils.print_rank_0(self.critic)
         # 确保参数可训练
         for param in self.critic.value_head.parameters():
             param.requires_grad = True
