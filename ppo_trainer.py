@@ -350,7 +350,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 生成 response（actor模型）
         with torch.no_grad():
             if not self.config.do_search:
-                outputs = self.actor.generate(
+                outputs = self.actor.module.generate(
                     input_ids=input_ids,
                     max_length=self.config.rollout.max_new_token + prompt_len,
                     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
@@ -476,7 +476,7 @@ class MegatronDeepSpeedPPOTrainer:
         metrics = {}
         for data in dataloader:
             # 模型前向传播
-            metric_micro_batch = self.actor.forward_backward_batch(
+            metric_micro_batch = self.actor.module.forward_backward_batch(
                 batch=data,
                 forward_only=False,
                 post_process_fn=None,
@@ -630,7 +630,7 @@ class MegatronDeepSpeedPPOTrainer:
             batch_size=responses.shape[0])
         batches.to('cuda')
         with torch.no_grad():
-            output = self.critic.forward_backward_batch(batch=batches, forward_only=True)
+            output = self.critic.module.forward_backward_batch(batch=batches, forward_only=True)
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
                 values = torch.cat([o for o in output], dim=0)  # (bs, seq_size, 1)
@@ -680,7 +680,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 模型前向传播
         with torch.no_grad():
-            log_probs = self.reference.forward_backward_batch(
+            log_probs = self.reference.module.forward_backward_batch(
                 batch=batches,
                 forward_only=True,
                 post_process_fn=compute_logprobs_fn
@@ -728,7 +728,7 @@ class MegatronDeepSpeedPPOTrainer:
                                          dataloader_kwargs={'shuffle': self.config.critic.shuffle})
         metrics = {}
         for data in dataloader:
-            metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
+            metric_micro_batch = self.critic.module.forward_backward_batch(batch=data, meta_info=meta_info)
 
             increment = data.batch_size[0]
 

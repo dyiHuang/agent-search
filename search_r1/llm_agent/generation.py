@@ -183,7 +183,7 @@ class LLMGenerationManager:
         num_gpus = self.config.num_gpus
         prompt_len = active_batch["input_ids"].shape[1]
         if num_gpus <= 1:
-            output = self.actor.generate(
+            output = self.actor.module.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token + prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
@@ -205,7 +205,7 @@ class LLMGenerationManager:
             if isinstance(active_batch[key], torch.Tensor):
                 active_batch[key] = active_batch[key].long()
         if remainder == 0:
-            output = self.actor.generate(
+            output = self.actor.module.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token + prompt_len,
                 eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
@@ -235,7 +235,7 @@ class LLMGenerationManager:
                 padded_active_batch[key] = padded_active_batch[key].long()
 
         # Generate with padded batch
-        padded_output = self.actor.generate(
+        padded_output = self.actor.module.generate(
             input_ids=padded_active_batch["input_ids"].to('cuda'),
             max_length=self.g_config.rollout.max_new_token + prompt_len,
             eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),

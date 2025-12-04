@@ -109,7 +109,7 @@ class Qwen2DotProductAttention(DotProductAttention):
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
 
@@ -1114,10 +1114,10 @@ class Qwen2MegatronModel(MegatronModule):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
-                           # attention_mask=micro_batch["attention_mask"],
-                           only_last_token=only_last_token,
-                           inference_context=inference_context)
+            output = model.forward(input_ids=micro_batch["input_ids"], attention_mask=None,
+                                   # attention_mask=micro_batch["attention_mask"],
+                                   only_last_token=only_last_token,
+                                   inference_context=inference_context)
             if inference_context is not None:
                 inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
             return output, partial(loss_func, data=micro_batch)
@@ -1367,8 +1367,10 @@ class Qwen2MegatronModel(MegatronModule):
         ]
         if tokenizer is not None:
             # input_ids1 = tokenizer.encode("Hello", return_tensors="pt", padding="max_length", max_length=30).to('cuda')
-            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=150).to('cuda')
-            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=150).to('cuda')
+            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=150).to(
+                'cuda')
+            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=150).to(
+                'cuda')
             input_ids = torch.cat((input_ids1, input_ids2), dim=0)
             # input_ids = input_ids1
         # test_prompt = "Hello"
@@ -1852,8 +1854,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model(input_ids=micro_batch["input_ids"], attention_mask=None,
-                           only_last_token=only_last_token, inference_context=inference_context)
+            output = model.forward(input_ids=micro_batch["input_ids"], attention_mask=None,
+                                   only_last_token=only_last_token, inference_context=inference_context)
             if inference_context is not None:
                 inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
             return output, partial(loss_func, data=batch)
