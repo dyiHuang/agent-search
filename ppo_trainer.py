@@ -68,9 +68,6 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config)
-        # 确保参数可训练
-        for param in self.actor.parameters():
-            param.requires_grad = True
         self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                  qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
@@ -91,6 +88,9 @@ class MegatronDeepSpeedPPOTrainer:
             # param.data = param.data.to(torch.float32)
         self.reference.config.enable_autocast = True
         self.reference.config.autocast_dtype = torch.bfloat16
+        # 确保参数可训练
+        for param in self.actor.parameters():
+            param.requires_grad = True
 
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
