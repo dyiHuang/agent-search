@@ -132,11 +132,11 @@ critic:
 rollout:
   max_new_token: 52
   temperature: 1.0
-  top_k: 5
+  top_k: -1
 
 retriever:
   url: http://127.0.0.1:8000/retrieve
-  topk: -1
+  topk: 3
 
 trainer:
   total_epochs: 3
