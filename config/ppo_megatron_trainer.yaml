@@ -102,7 +102,7 @@ actor:
     clip_grad: 1.0
     lr_warmup_fraction: 0.285  # the total steps will be injected during runtime
     weight_decay_incr_style: linear  # select from constant/cosine
-    start_weight_decay: 0.
+    start_weight_decay: 0.01
     end_weight_decay: 1e-7
     total_training_steps: 1005  # must be override by program
     use_checkpoint_opt_param_scheduler: True

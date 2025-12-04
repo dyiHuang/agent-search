@@ -202,10 +202,10 @@ class MegatronDeepSpeedPPOTrainer:
         opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
         assert isinstance(actor_optimizer, ChainedOptimizer)
 
-        # 核心修复：强制开启所有参数的 requires_grad
-        for group in actor_optimizer.optimizer.param_groups:
-            for p in group["params"]:
-                p.requires_grad = True  # 覆盖 Megatron 处理后的状态
+        # # 核心修复：强制开启所有参数的 requires_grad
+        # for group in actor_optimizer.optimizer.param_groups:
+        #     for p in group["params"]:
+        #         p.requires_grad = True  # 覆盖 Megatron 处理后的状态
 
         # 将 config.deepspeed 转换为 dict
         # resolve=True 表示在转换前解析所有变量插值
@@ -237,7 +237,7 @@ class MegatronDeepSpeedPPOTrainer:
                 config=deepspeed_dict,
                 mpu=parallel_state,
                 lr_scheduler=opt_param_scheduler,
-                model_parameters=self.actor.parameters()
+                # model_parameters=self.actor.parameters()
             )
             print(
                 f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
