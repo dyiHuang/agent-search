@@ -1255,6 +1255,7 @@ class Qwen2MegatronModel(MegatronModule):
         inference_context = StaticInferenceContext(
             batch_size, max_sequence_length
         )
+        inference_context = None
         next_token = None
         for step in range(num_steps):
             utils.print_rank_0(f"\n--- 生成步骤 {step + 1} ---")
