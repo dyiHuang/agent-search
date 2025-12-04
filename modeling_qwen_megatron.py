@@ -986,8 +986,10 @@ class Qwen2MegatronModel(MegatronModule):
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # 确保正确聚合所有micro batch的logits
                 if isinstance(logits, list):
+                    utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
                     logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
                 logits = logits.to(torch.float32)
+                utils.print_rank_0(f"logits shape={logits.shape}")
             else:
                 logits = torch.empty(size=(batch_size, 1, self.vocab_size),
                                      dtype=torch.float32,
@@ -1010,7 +1012,9 @@ class Qwen2MegatronModel(MegatronModule):
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
             next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
-            next_token = torch.multinomial(next_token_log_probs.squeeze(1), num_samples=1)  # [batch_size, 1]
+            next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
+
+            utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
             # f. 处理停止条件：标记已生成eos的样本
             finished_mask = finished_mask | (next_token.squeeze(1) == eos_token_id)
