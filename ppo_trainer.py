@@ -78,10 +78,6 @@ class MegatronDeepSpeedPPOTrainer:
         self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer, qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         utils.print_rank_0(self.reference)
-        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.weight)
-        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.bias)
-        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.weight.shape)
-        utils.print_rank_0(self.reference.layers[0].self_attention.linear_qkv.bias.shape)
         for param in self.reference.parameters():
             param.requires_grad = False
             # param.data = param.data.to(torch.float32)
@@ -363,9 +359,6 @@ class MegatronDeepSpeedPPOTrainer:
                     attention_mask=attention_mask,
                     top_k=self.config.rollout.top_k,
                 )
-                # utils.print_rank_0(f"self.actor.generated size: {len(outputs)}")
-                # utils.print_rank_0(f"self.actor.generated outputs shape: {outputs.shape}")
-                # responses = self.tokenizer.decode(outputs, skip_special_tokens=True)
                 batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
                 response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                                    eos_token=self.tokenizer.eos_token_id,

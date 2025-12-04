@@ -72,9 +72,9 @@ class Qwen2DotProductAttention(DotProductAttention):
         key = key.transpose(0, 1).transpose(1, 2).contiguous()
         value = value.transpose(0, 1).transpose(1, 2).contiguous()
 
-        utils.print_rank_0(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
-        utils.print_rank_0(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
-        utils.print_rank_0(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
+        # utils.print_rank_0(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
+        # utils.print_rank_0(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        # utils.print_rank_0(f"dp value - 形状: {value.shape}, 均值: {value.mean():.6f}, 标准差: {value.std():.6f}")
 
         # [b, sq, np, hn]
         attn_output, attn_weights = attention_interface(
@@ -89,8 +89,8 @@ class Qwen2DotProductAttention(DotProductAttention):
             # **kwargs,
         )
 
-        utils.print_rank_0(
-            f"dp attn_output - 形状: {attn_output.shape}, 均值: {attn_output.mean():.6f}, 标准差: {attn_output.std():.6f}")
+        # utils.print_rank_0(
+        #     f"dp attn_output - 形状: {attn_output.shape}, 均值: {attn_output.mean():.6f}, 标准差: {attn_output.std():.6f}")
 
         # =========================
         # Context layer. [sq, b, hp]
@@ -281,13 +281,13 @@ class Qwen2MegatronAttention(SelfAttention):
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix="linear_proj")
         o_proj_w, o_proj_b = self.linear_proj.weight, self.linear_proj.bias
-        utils.print_rank_0(
-            f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
-        utils.print_rank_0(
-            f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
-        if o_proj_b is not None:
-            utils.print_rank_0(
-                f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
+        # utils.print_rank_0(
+        #     f"Qwen2MegatronAttention linear_proj_output - 形状: {output.shape}, 均值: {output.mean():.6f}, 标准差: {output.std():.6f}")
+        # utils.print_rank_0(
+        #     f"linear_proj_w - 形状: {o_proj_w.shape}, 均值: {o_proj_w.mean():.6f}, 标准差: {o_proj_w.std():.6f}")
+        # if o_proj_b is not None:
+        #     utils.print_rank_0(
+        #         f"linear_proj_b - 形状: {o_proj_b.shape}, 均值: {o_proj_b.mean():.6f}, 标准差: {o_proj_b.std():.6f}")
 
         return output, bias
 
@@ -296,8 +296,8 @@ class Qwen2MegatronAttention(SelfAttention):
         Derives `query`, `key` and `value` tensors from `hidden_states`. If `split_qkv=False`, then
         the unsplit mixed_qkv tensor is returned.
         """
-        utils.print_rank_0(
-            f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
+        # utils.print_rank_0(
+        #     f"get_query_key_value_tensors hidden_states - 形状: {hidden_states.shape}, 均值: {hidden_states.mean():.6f}, 标准差: {hidden_states.std():.6f}")
         # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
         mixed_qkv, _ = self.linear_qkv(hidden_states)
 
@@ -341,13 +341,13 @@ class Qwen2MegatronAttention(SelfAttention):
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.weight, p_split_arg_list, dim=0)
 
         # utils.print_rank_0(f"query_p - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        utils.print_rank_0(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # utils.print_rank_0(f"key_p - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
         # utils.print_rank_0(f"value_p - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         (query_p, key_p, value_p) = torch.split(self.linear_qkv.bias, p_split_arg_list, dim=0)
 
         # utils.print_rank_0(f"query_bias - 形状: {query_p.shape}, 均值: {query_p.mean():.6f}, 标准差: {query_p.std():.6f}")
-        utils.print_rank_0(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
+        # utils.print_rank_0(f"key_bias - 形状: {key_p.shape}, 均值: {key_p.mean():.6f}, 标准差: {key_p.std():.6f}")
         # utils.print_rank_0(f"value_bias - 形状: {value_p.shape}, 均值: {value_p.mean():.6f}, 标准差: {value_p.std():.6f}")
 
         query = q.reshape(q.size(0), q.size(1), self.num_attention_heads_per_partition,
@@ -357,8 +357,8 @@ class Qwen2MegatronAttention(SelfAttention):
         value = v.reshape(q.size(0), q.size(1), self.num_query_groups_per_partition,
                           self.hidden_size_per_attention_head)
 
-        utils.print_rank_0(
-            f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
+        # utils.print_rank_0(
+        #     f"get_query_key_value_tensors key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
 
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
@@ -521,8 +521,8 @@ class Qwen2MegatronMLP(MLP):
             nvtx_range_pop(suffix="linear_fc2")
         nvtx_range_pop(suffix="activation")
 
-        utils.print_rank_0(
-            f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
+        # utils.print_rank_0(
+        #     f"Qwen2MegatronMLP 最终输出: shape={output.shape} mean={output.mean():.6f}, std={output.std():.6f}")
         return output, output_bias
 
 
@@ -770,7 +770,7 @@ class Qwen2MegatronModel(MegatronModule):
         # 输出层（final_norm + lm_head）：仅 PP 最后一个 stage 初始化
         self.final_norm = None
         self.lm_head = None
-        utils.print_rank_0(f"self.pp_rank: {self.pp_rank}, self.pp_size: {self.pp_size}")
+        # utils.print_rank_0(f"self.pp_rank: {self.pp_rank}, self.pp_size: {self.pp_size}")
         if self.pp_rank == self.pp_size - 1:
             self.final_norm = Qwen2RMSNorm(megatron_config, self.hidden_size, eps=qwen_config.rms_norm_eps)
             self.lm_head = tensor_parallel.ColumnParallelLinear(
@@ -843,8 +843,8 @@ class Qwen2MegatronModel(MegatronModule):
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         hidden_states = hidden_states.transpose(1, 0).contiguous()
         for layer in self.layers:
-            utils.print_rank_0(
-                f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
+            # utils.print_rank_0(
+            #     f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
             hidden_states = layer(
                 hidden_states, attention_mask=causal_mask_mapping[layer.attention_type], rotary_pos_emb=rotary_pos_emb,
                 inference_context=inference_context
