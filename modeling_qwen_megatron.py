@@ -1944,9 +1944,9 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     # utils.print_rank_0(f"qwen2 response: {response}")
 
     if not is_critic:
-        model = Qwen2MegatronModel(config, qwen_config, megatron_config)
+        model = Qwen2MegatronModel(config, hf_model.config, megatron_config)
         model.cuda()
-        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], qwen_config,
+        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
                                                    megatron_config.params_dtype)
     else:
         model = Qwen2MegatronCritic(config, hf_model.config, megatron_config)

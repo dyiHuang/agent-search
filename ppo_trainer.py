@@ -81,8 +81,6 @@ class MegatronDeepSpeedPPOTrainer:
         self.critic.config.autocast_dtype = torch.bfloat16
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
-        # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
-        self._init_deepspeed()
 
         self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                     qwen_model_path=config.qwen_model_path)
@@ -93,6 +91,9 @@ class MegatronDeepSpeedPPOTrainer:
             # param.data = param.data.to(torch.float32)
         self.reference.config.enable_autocast = True
         self.reference.config.autocast_dtype = torch.bfloat16
+
+        # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
+        self._init_deepspeed()
 
 
 
@@ -203,6 +204,8 @@ class MegatronDeepSpeedPPOTrainer:
         # DeepSpeed 配置（从 config dict 加载）
         ds_config = deepspeed.DeepSpeedConfig(deepspeed_dict)
 
+        parallel_state_patch.add_missing_mpu_methods()
+
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
         filtered_param_groups = []
@@ -219,8 +222,8 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.actor.step = lambda *args, **kwargs: None
         else:
+
             actor_optimizer.optimizer.param_groups = filtered_param_groups
-            parallel_state_patch.add_missing_mpu_methods()
             # 初始化 DeepSpeed 引擎
             self.actor, self.optimizer, _, _ = deepspeed.initialize(
                 model=self.actor,
