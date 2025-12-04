@@ -409,9 +409,7 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
-        # 解码第一条输入，确认无乱码
-        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
-        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
+
         print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
         response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
                                            eos_token=self.tokenizer.eos_token_id,
@@ -419,6 +417,10 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 计算 reference 的 log_prob
         ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
+
+        # 解码第一条输入，确认无乱码
+        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
+        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
 
         return response, outputs, ref_log_probs, response_mask, mask
 
