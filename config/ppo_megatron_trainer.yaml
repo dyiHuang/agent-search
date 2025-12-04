@@ -91,6 +91,9 @@ actor:
   ppo_epochs: 1
   shuffle: True
   load_weight: True
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.001
   optimizer:
     lr: 2e-7
     min_lr: 1e-8   # only useful for warmup with cosine
