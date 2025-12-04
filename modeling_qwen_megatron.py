@@ -1291,7 +1291,8 @@ class Qwen2MegatronModel(MegatronModule):
             next_token = torch.multinomial(probs, num_samples=1)
             utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
 
-            inference_context.increment_sequence_len_offset(_input.size(1))
+            if inference_context is not None:
+                inference_context.increment_sequence_len_offset(_input.size(1))
 
             # 更新输入
             current_input = torch.cat([current_input, next_token], dim=1)
