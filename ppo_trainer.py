@@ -203,43 +203,33 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
-        # filtered_param_groups = []
-        # for param_group in actor_optimizer.optimizer.param_groups:
-        #     trainable = sum(1 for param in param_group['params'] if param.requires_grad)
-        #     # 检查这个 group 的 'params' 列表是否为空
-        #     if trainable > 0:
-        #         filtered_param_groups.append(param_group)
-        # # 2. 验证过滤后是否还有参数组
-        # if not filtered_param_groups:
-        #     print(
-        #         f"[Rank {torch.distributed.get_rank()}] All actor param_groups are empty after filtering. No "
-        #         f"parameters to"
-        #         f"optimize.")
-        #     self.actor.step = lambda *args, **kwargs: None
-        # else:
-        #     actor_optimizer.optimizer.param_groups = filtered_param_groups
-        #     parallel_state_patch.add_missing_mpu_methods()
-        #     # 初始化 DeepSpeed 引擎
-        #     self.actor, self.optimizer, _, _ = deepspeed.initialize(
-        #         model=self.actor,
-        #         optimizer=actor_optimizer.optimizer,
-        #         config=deepspeed_dict,
-        #         mpu=parallel_state,
-        #         lr_scheduler=opt_param_scheduler,
-        #         # model_parameters=self.actor.parameters()
-        #     )
-        #     print(
-        #         f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
-        parallel_state_patch.add_missing_mpu_methods()
-        # 初始化 DeepSpeed 引擎
-        self.actor, self.optimizer, _, _ = deepspeed.initialize(
-            model=self.actor,
-            optimizer=actor_optimizer.optimizer,
-            config=deepspeed_dict,
-            mpu=parallel_state,
-            lr_scheduler=opt_param_scheduler,
-            # model_parameters=self.actor.parameters()
-        )
+        filtered_param_groups = []
+        for param_group in actor_optimizer.optimizer.param_groups:
+            trainable = sum(1 for param in param_group['params'] if param.requires_grad)
+            # 检查这个 group 的 'params' 列表是否为空
+            if trainable > 0:
+                filtered_param_groups.append(param_group)
+        # 2. 验证过滤后是否还有参数组
+        if not filtered_param_groups:
+            print(
+                f"[Rank {torch.distributed.get_rank()}] All actor param_groups are empty after filtering. No "
+                f"parameters to"
+                f"optimize.")
+            self.actor.step = lambda *args, **kwargs: None
+        else:
+            actor_optimizer.optimizer.param_groups = filtered_param_groups
+            parallel_state_patch.add_missing_mpu_methods()
+            # 初始化 DeepSpeed 引擎
+            self.actor, self.optimizer, _, _ = deepspeed.initialize(
+                model=self.actor,
+                optimizer=actor_optimizer.optimizer,
+                config=deepspeed_dict,
+                mpu=parallel_state,
+                lr_scheduler=opt_param_scheduler,
+                # model_parameters=self.actor.parameters()
+            )
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
         critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
                                                   model_chunks=[self.critic])
