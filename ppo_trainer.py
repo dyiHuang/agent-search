@@ -67,7 +67,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 3. 构建 PPO 三模型
         self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
-                                                lora_config=self.lora_config)
+                                                lora_config=self.lora_config, is_actor=True)
         utils.print_rank_0(self.actor)
         self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                  qwen_model_path=config.qwen_model_path,

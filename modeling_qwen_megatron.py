@@ -1657,6 +1657,16 @@ class Qwen2MegatronModel(MegatronModule):
             utils.print_rank_0(f"linear_fc2偏置 - mean: {fc2_bias.mean().item():.6f}, std: {fc2_bias.std().item():.6f}")
 
 
+class Qwen2MegatronActor(Qwen2MegatronModel):
+    def __init__(
+            self,
+            g_config,
+            qwen_config: Qwen2Config,
+            megatron_config: TransformerConfig,
+    ):
+        super().__init__(g_config=g_config, qwen_config=qwen_config, megatron_config=megatron_config)
+
+
 class Qwen2MegatronCritic(Qwen2MegatronModel):
     """PPO Critic模型（价值网络），兼容Megatron TP并行"""
 
@@ -1892,7 +1902,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         return losses_reduced
 
 
-def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False) \
+def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False, is_actor=False) \
         -> Union[Qwen2MegatronModel, Qwen2MegatronCritic]:
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
@@ -1943,11 +1953,16 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     #                         skip_special_tokens=True)
     # utils.print_rank_0(f"qwen2 response: {response}")
 
-    if not is_critic:
+    if not is_critic and not is_actor:
         model = Qwen2MegatronModel(config, hf_model.config, megatron_config)
         model.cuda()
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
                                                    megatron_config.params_dtype)
+    elif is_actor:
+        model = Qwen2MegatronActor(config, hf_model.config, megatron_config)
+        model.cuda()
+        qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
+                                                   megatron_config.params_dtype, is_value_model=is_critic)
     else:
         model = Qwen2MegatronCritic(config, hf_model.config, megatron_config)
         model.cuda()
