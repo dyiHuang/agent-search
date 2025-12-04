@@ -1012,7 +1012,7 @@ class Qwen2MegatronModel(MegatronModule):
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
             next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
-            next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
+            next_token = torch.multinomial(next_token_log_probs.squeeze(1), num_samples=1)  # [batch_size, 1]
 
             utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
@@ -1115,6 +1115,8 @@ class Qwen2MegatronModel(MegatronModule):
                            # attention_mask=micro_batch["attention_mask"],
                            only_last_token=only_last_token,
                            inference_context=inference_context)
+            if inference_context is not None:
+                inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
             return output, partial(loss_func, data=micro_batch)
 
         # batch should be a list of batches inside micro-batches
@@ -1750,7 +1752,9 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
         )
-        position_ids = cache_position.unsqueeze(0)
+        position_ids = torch.arange(
+            0, past_seen_tokens + seq_len, device=hidden_states.device
+        ).unsqueeze(0)
 
         causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
                                                        inference_context, seq_len)
