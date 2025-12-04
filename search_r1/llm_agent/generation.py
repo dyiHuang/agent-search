@@ -508,20 +508,19 @@ If I want to give the final answer, I should put the answer between <answer> and
     def _passages2string(self, retrieval_result):
         format_reference = ''
         for idx, doc_item in enumerate(retrieval_result):
-            document = doc_item.get('document', '')
-            if isinstance(document, dict):
+            if isinstance(doc_item, dict):
                 # 场景：document是字典，取contents
                 content = doc_item['document']['contents']
                 title = content.split("\n")[0]
                 text = "\n".join(content.split("\n")[1:])
-            elif isinstance(document, str):
+            elif isinstance(doc_item, str):
                 # 尝试解析JSON字符串
                 try:
-                    doc_dict = json.loads(document)
-                    content = doc_dict.get('contents', document).strip()
+                    doc_dict = json.loads(doc_item)
+                    content = doc_dict.get('contents', doc_item).strip()
                 except:
                     # 解析失败则直接用原字符串
-                    content = document.strip()
+                    content = doc_item.strip()
                 text = "\n".join(content.split("\n")[1:])
                 title = "_title_"
             else:
