@@ -1038,7 +1038,7 @@ class Qwen2MegatronModel(MegatronModule):
                 inference_context.increment_sequence_len_offset(_input.size(1))
 
             # 更新输入
-            generated_ids[:, step] = next_token
+            generated_ids[:, step] = next_token.squeeze(1)
             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
             # # 对已完成的样本，填充pad_token_id
             # next_token = torch.where(finished_mask.unsqueeze(1), torch.tensor(pad_token_id, device=device), next_token)
