@@ -1317,13 +1317,43 @@ class Qwen2MegatronModel(MegatronModule):
             else:
                 _input = current_input
             # 前向传播获取logits
-            with torch.no_grad():
-                logits = self.forward(
-                    input_ids=_input,
-                    # attention_mask=attention_mask,
-                    # only_last_token=False  # 只获取最后一个token的logits
-                    inference_context=inference_context,
-                )
+            # with torch.no_grad():
+            #     logits = self.forward(
+            #         input_ids=_input,
+            #         # attention_mask=attention_mask,
+            #         # only_last_token=False  # 只获取最后一个token的logits
+            #         inference_context=inference_context,
+            #     )
+
+            batches = TensorDict(
+                source={
+                    "input_ids": _input,
+                    "attention_mask": attention_mask
+                },
+                batch_size=batch_size)
+            # b. 前向传播：仅计算最后一个token的logits（提升效率）
+            logits = self.forward_backward_batch(
+                batch=batches,
+                only_last_token=True,  # 关键优化：仅返回最后一个token的logits
+                forward_only=True,
+                inference_context=inference_context,
+            )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
+
+            # logits = [
+            #     # c. 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
+            #     self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
+
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
+                # 确保正确聚合所有micro batch的logits
+                if isinstance(logits, list):
+                    utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
+                    logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
+                logits = logits.to(torch.float32)
+                utils.print_rank_0(f"logits shape={logits.shape}")
+            else:
+                logits = torch.empty(size=(batch_size, 1, self.vocab_size),
+                                     dtype=torch.float32,
+                                     device=input_ids.device)
 
             utils.print_rank_0(f"Logits形状: {logits.shape}")
             utils.print_rank_0(f"Logits范围: [{logits.min():.3f}, {logits.max():.3f}]")
