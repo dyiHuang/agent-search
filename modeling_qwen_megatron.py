@@ -964,14 +964,15 @@ class Qwen2MegatronModel(MegatronModule):
 
             if next_token is not None and inference_context is not None:
                 _input = next_token
-                current_attention_mask = None
+                _mask = None
             else:
                 _input = current_input_ids
+                _mask = current_attention_mask
 
             batches = TensorDict(
                 source={
                     "input_ids": _input,
-                    "attention_mask": current_attention_mask
+                    "attention_mask": _mask
                 },
                 batch_size=batch_size)
             # b. 前向传播：仅计算最后一个token的logits（提升效率）
