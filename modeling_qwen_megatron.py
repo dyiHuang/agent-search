@@ -1018,13 +1018,11 @@ class Qwen2MegatronModel(MegatronModule):
 
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
-            next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
-            next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
+            # next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
+            # next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
 
             utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
-            # f. 处理停止条件：标记已生成eos的样本
-            finished_mask = finished_mask | (next_token.squeeze(1) == eos_token_id)
             # 检查logits的分布
             last_token_logits = logits[:, -1]  # [batch_size, vocab_size]
             probs = torch.softmax(last_token_logits, dim=-1)
@@ -1032,6 +1030,9 @@ class Qwen2MegatronModel(MegatronModule):
             # 采样
             next_token = torch.multinomial(probs, num_samples=1)
             utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
+
+            # f. 处理停止条件：标记已生成eos的样本
+            finished_mask = finished_mask | (next_token.squeeze(1) == eos_token_id)
 
             if inference_context is not None:
                 inference_context.increment_sequence_len_offset(_input.size(1))
