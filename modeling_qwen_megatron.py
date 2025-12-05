@@ -1008,13 +1008,13 @@ class Qwen2MegatronModel(MegatronModule):
 
             # utils.print_rank_0(f"after broadcast, logits shape : {logits.shape}")
 
-            # last token
-            logits = logits[:, -1]  # [batch_size, vocab_size]
+            # # last token
+            # logits = logits[:, -1]  # [batch_size, vocab_size]
 
             # d. 应用温度采样和Top-K过滤
-            logits = logits / temperature  # 温度调整
-            if top_k is not None and top_k > 0:
-                logits = self._top_k_filter(logits, top_k)  # Top-K过滤
+            # logits = logits / temperature  # 温度调整
+            # if top_k is not None and top_k > 0:
+            #     logits = self._top_k_filter(logits, top_k)  # Top-K过滤
 
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
@@ -1025,21 +1025,35 @@ class Qwen2MegatronModel(MegatronModule):
 
             # f. 处理停止条件：标记已生成eos的样本
             finished_mask = finished_mask | (next_token.squeeze(1) == eos_token_id)
-            # 对已完成的样本，填充pad_token_id
-            next_token = torch.where(finished_mask.unsqueeze(1), torch.tensor(pad_token_id, device=device), next_token)
+            # 检查logits的分布
+            last_token_logits = logits[:, -1]  # [batch_size, vocab_size]
+            probs = torch.softmax(last_token_logits, dim=-1)
 
-            # g. 保存生成的token
-            generated_ids[:, step] = next_token.squeeze(1)
+            # 采样
+            next_token = torch.multinomial(probs, num_samples=1)
+            utils.print_rank_0(f"采样的下一个token: {next_token[0].item()}")
 
             if inference_context is not None:
                 inference_context.increment_sequence_len_offset(_input.size(1))
 
-            # h. 更新attention_mask（新增token的mask为True）
-            # new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
-            new_attention_mask = torch.where(finished_mask.unsqueeze(1),
-                                             torch.tensor(False, dtype=torch.bool, device=device),
-                                             torch.tensor(True, dtype=torch.bool, device=device))
-            attention_mask = torch.cat([attention_mask, new_attention_mask], dim=-1)  # [batch_size, step+1]
+            # 更新输入
+            generated_ids[:, step] = next_token
+            attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
+            # # 对已完成的样本，填充pad_token_id
+            # next_token = torch.where(finished_mask.unsqueeze(1), torch.tensor(pad_token_id, device=device), next_token)
+            #
+            # # g. 保存生成的token
+            # generated_ids[:, step] = next_token.squeeze(1)
+            #
+            # if inference_context is not None:
+            #     inference_context.increment_sequence_len_offset(_input.size(1))
+            #
+            # # h. 更新attention_mask（新增token的mask为True）
+            # # new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
+            # new_attention_mask = torch.where(finished_mask.unsqueeze(1),
+            #                                  torch.tensor(False, dtype=torch.bool, device=device),
+            #                                  torch.tensor(True, dtype=torch.bool, device=device))
+            # attention_mask = torch.cat([attention_mask, new_attention_mask], dim=-1)  # [batch_size, step+1]
 
             # i. 若所有样本都已完成，提前退出
             if finished_mask.all():
