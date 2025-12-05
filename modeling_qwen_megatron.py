@@ -1032,7 +1032,7 @@ class Qwen2MegatronModel(MegatronModule):
             generated_ids[:, step] = next_token.squeeze(1)
 
             if inference_context is not None:
-                inference_context.increment_sequence_len_offset(current_input_ids.size(1))
+                inference_context.increment_sequence_len_offset(_input.size(1))
 
             # h. 更新attention_mask（新增token的mask为True）
             # new_attention_mask = torch.ones((batch_size, 1), dtype=torch.bool, device=device)
