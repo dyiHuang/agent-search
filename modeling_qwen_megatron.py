@@ -964,7 +964,7 @@ class Qwen2MegatronModel(MegatronModule):
 
             if next_token is not None and inference_context is not None:
                 _input = next_token
-                _mask = None
+                _mask = torch.ones_like(current_attention_mask)
             else:
                 _input = current_input_ids
                 _mask = current_attention_mask
