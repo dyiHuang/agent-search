@@ -974,7 +974,7 @@ class Qwen2MegatronModel(MegatronModule):
             # b. 前向传播：仅计算最后一个token的logits（提升效率）
             logits = self.forward_backward_batch(
                 batch=batches,
-                # only_last_token=True,  # 关键优化：仅返回最后一个token的logits
+                only_last_token=True,  # 关键优化：仅返回最后一个token的logits
                 forward_only=True,
                 inference_context=inference_context,
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
