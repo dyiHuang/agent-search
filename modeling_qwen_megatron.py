@@ -963,11 +963,14 @@ class Qwen2MegatronModel(MegatronModule):
             current_attention_mask = attention_mask[:, :step]  # [batch_size, step]
 
             if next_token is not None and inference_context is not None:
-                current_input_ids = next_token
+                _input = next_token
+                current_attention_mask = None
+            else:
+                _input = current_input_ids
 
             batches = TensorDict(
                 source={
-                    "input_ids": current_input_ids,
+                    "input_ids": _input,
                     "attention_mask": current_attention_mask
                 },
                 batch_size=batch_size)
