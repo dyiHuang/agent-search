@@ -945,12 +945,13 @@ class Qwen2MegatronModel(MegatronModule):
         # 4. 初始化生成状态：记录每个样本是否已生成eos
         finished_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)  # [batch_size]
 
-        # 5. 预分配生成结果的tensor（避免动态拼接）
-        generated_ids = torch.full(
-            (batch_size, max_length), pad_token_id, dtype=torch.long, device=device
-        )
-        generated_ids[:, :current_seq_len] = input_ids  # 填充prompt部分
+        # # 5. 预分配生成结果的tensor（避免动态拼接）
+        # generated_ids = torch.full(
+        #     (batch_size, max_length), pad_token_id, dtype=torch.long, device=device
+        # )
+        # generated_ids[:, :current_seq_len] = input_ids  # 填充prompt部分
 
+        current_input_ids = input_ids
         inference_context = StaticInferenceContext(
             batch_size, max_length
         )
@@ -959,12 +960,12 @@ class Qwen2MegatronModel(MegatronModule):
         # 6. 自回归生成循环
         for step in range(current_seq_len, max_length):
             # a. 获取当前输入（prompt + 已生成的token）
-            current_input_ids = generated_ids[:, :step]  # [batch_size, step]
+            # current_input_ids = input_ids  # [batch_size, step]
             current_attention_mask = attention_mask[:, :step]  # [batch_size, step]
 
             if next_token is not None and inference_context is not None:
                 _input = next_token
-                _mask = torch.ones_like(current_attention_mask)
+                _mask = current_attention_mask
             else:
                 _input = current_input_ids
                 _mask = current_attention_mask
@@ -1038,7 +1039,7 @@ class Qwen2MegatronModel(MegatronModule):
                 inference_context.increment_sequence_len_offset(_input.size(1))
 
             # 更新输入
-            generated_ids[:, step] = next_token.squeeze(1)
+            current_input_ids = torch.cat([current_input_ids, next_token], dim=1)
             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token, dtype=torch.bool)], dim=1)
             # # 对已完成的样本，填充pad_token_id
             # next_token = torch.where(finished_mask.unsqueeze(1), torch.tensor(pad_token_id, device=device), next_token)
@@ -1060,7 +1061,7 @@ class Qwen2MegatronModel(MegatronModule):
             if finished_mask.all():
                 break
 
-        return generated_ids
+        return current_input_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
                                forward_only=False, post_process_fn=None, meta_info: Dict = None,
