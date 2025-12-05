@@ -1001,10 +1001,10 @@ class Qwen2MegatronModel(MegatronModule):
 
             # utils.print_rank_0(f"before broadcast, logits shape : {logits.shape}")
             # broadcast across pp ranks
-            torch.distributed.broadcast(tensor=logits,
-                                        src=parallel_state.get_pipeline_model_parallel_last_rank(),
-                                        group=parallel_state.get_pipeline_model_parallel_group(),
-                                        async_op=False)
+            # torch.distributed.broadcast(tensor=logits,
+            #                             src=parallel_state.get_pipeline_model_parallel_last_rank(),
+            #                             group=parallel_state.get_pipeline_model_parallel_group(),
+            #                             async_op=False)
 
             # utils.print_rank_0(f"after broadcast, logits shape : {logits.shape}")
 
