@@ -5,9 +5,9 @@ data:
   train_files: ./data/train.parquet
   val_files: ./data/test.parquet
   prompt_key: prompt
-  max_prompt_length: 4096
-  max_response_length: 50
-  max_start_length: 2048
+  max_prompt_length: 512
+  max_response_length: 100
+  max_start_length: 512
   train_batch_size: ${global_batch_size}
   val_batch_size: 256
   return_raw_input_ids: False  # This should be set to true when the tokenizer between policy and rm differs
