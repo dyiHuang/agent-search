@@ -131,6 +131,8 @@ class RLHFDataset(Dataset):
             prompt_with_chat_template = chat[0]['content']
         # prompt_with_chat_template = chat
 
+        print(f"prompt_with_chat_template: {prompt_with_chat_template}")
+
         input_ids, attention_mask = torch_functional.tokenize_and_postprocess_data(prompt=prompt_with_chat_template,
                                                                          tokenizer=self.tokenizer,
                                                                          max_length=self.max_prompt_length,
