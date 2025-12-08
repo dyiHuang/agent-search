@@ -1429,7 +1429,7 @@ class Qwen2MegatronModel(MegatronModule):
         utils.print_rank_0("\n" + "=" * 50)
         utils.print_rank_0("2. 生成过程采样检查")
         utils.print_rank_0("=" * 50)
-        generated = self.generate(input_ids, max_length=300)
+        generated = self.generate(input_ids, max_length=400)
 
         # 3. 验证最终输出
         if tokenizer is not None:
