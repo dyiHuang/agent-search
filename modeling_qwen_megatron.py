@@ -895,7 +895,7 @@ class Qwen2MegatronModel(MegatronModule):
                 kv_offset=0,
                 mask_function=causal_mask_function,
                 attention_mask=attention_mask,
-                allow_is_causal_skip=True,  # additional kwarg for sdpa
+                allow_is_causal_skip=attention_mask is None or seq_len == 1,  # additional kwarg for sdpa
                 local_size=None,  # Additional kwarg for sdpa
                 dtype=hidden_states.dtype,  # Additional kwarg for eager
             )
