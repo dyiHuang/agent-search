@@ -365,14 +365,14 @@ class MegatronDeepSpeedPPOTrainer:
         # 生成 response（actor模型）
         with torch.no_grad():
             if not self.config.do_search:
-                outputs = self.actor.module.generate(
+                outputs = self.actor.generate(
                     input_ids=input_ids,
                     max_length=self.config.rollout.max_new_token + prompt_len,
-                    # eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
-                    # pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
-                    # temperature=self.config.rollout.temperature,
-                    # attention_mask=attention_mask,
-                    # top_k=self.config.rollout.top_k,
+                    eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+                    pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
+                    temperature=self.config.rollout.temperature,
+                    attention_mask=attention_mask,
+                    top_k=self.config.rollout.top_k,
                 )
                 batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
                 response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
@@ -547,7 +547,7 @@ class MegatronDeepSpeedPPOTrainer:
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
 
-                # self.actor.run_comprehensive_debug(self.tokenizer)
+                self.actor.run_comprehensive_debug(self.tokenizer)
                 #
                 # continue
 
