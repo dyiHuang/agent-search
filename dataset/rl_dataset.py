@@ -124,10 +124,12 @@ class RLHFDataset(Dataset):
         row_dict = self.dataframe.iloc[item].to_dict()
 
         chat = row_dict.pop(self.prompt_key)
+        print(f"chat: {chat}")
 
         if self.tokenizer.chat_template:
             prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
         else:
+            print(f"chat[0]['content']: {chat[0]['content']}")
             prompt_with_chat_template = chat[0]['content']
         # prompt_with_chat_template = chat
 
