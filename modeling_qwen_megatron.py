@@ -1384,7 +1384,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         return current_input
 
-    def run_comprehensive_debug(self, tokenizer):
+    def run_comprehensive_debug(self, tokenizer, batch_dict):
         """运行全面的调试"""
         utils.print_rank_0("🚀 开始全面调试...")
 
@@ -1409,6 +1409,8 @@ class Qwen2MegatronModel(MegatronModule):
         else:
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
+
+        input_ids = batch["input_ids"].to('cuda')
 
         # utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
         utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
