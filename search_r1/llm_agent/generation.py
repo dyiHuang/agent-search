@@ -283,10 +283,10 @@ class LLMGenerationManager:
         for step in range(self.config.max_turns):
             if not active_mask.sum():
                 break
-            rollings = self.tensor_fn.cut_to_effective_len(
-                rollings,
-                keys=['input_ids', 'attention_mask', 'position_ids']
-            )
+            # rollings = self.tensor_fn.cut_to_effective_len(
+            #     rollings,
+            #     keys=['input_ids', 'attention_mask', 'position_ids']
+            # )
 
             # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
             rollings_active = {
