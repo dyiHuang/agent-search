@@ -403,6 +403,8 @@ class MegatronDeepSpeedPPOTrainer:
                     g_config=self.config
                 )
                 first_input_ids = batch['input_ids'][:, -gen_config.max_start_length:].clone().long()
+                effective_len = batch['attention_mask'].sum(dim=1).max()
+                prompt_len = effective_len
                 final_gen_batch_output = generation_manager.run_llm_loop(
                     gen_batch=batch,
                     initial_input_ids=first_input_ids,

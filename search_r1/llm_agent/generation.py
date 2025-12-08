@@ -102,10 +102,13 @@ class LLMGenerationManager:
                               next_obs_ids: torch.Tensor) -> Dict:
         """Update rolling state with new responses and observations."""
         # Concatenate and handle padding        
-        new_input_ids = self.tensor_fn.concatenate_with_padding([
-            rollings['input_ids'],
+        resp = self.tensor_fn.concatenate_with_padding([
             cur_responses,
-            next_obs_ids
+            next_obs_ids,
+        ], pad_to_left=False)
+        new_input_ids = self.tensor_fn.concatenate_with_no_padding([
+            rollings['input_ids'],
+            resp
         ])
 
         # Create attention mask and position ids
@@ -114,7 +117,7 @@ class LLMGenerationManager:
 
         # Cut to appropriate length
         effective_len = new_attention_mask.sum(dim=1).max()
-        max_len = min(self.config.max_prompt_length, effective_len)
+        max_len = min(self.config.max_response_length, effective_len)
 
         new_rollings = {
             'input_ids': new_input_ids[:, -max_len:],
@@ -283,10 +286,11 @@ class LLMGenerationManager:
         for step in range(self.config.max_turns):
             if not active_mask.sum():
                 break
-            # rollings = self.tensor_fn.cut_to_effective_len(
-            #     rollings,
-            #     keys=['input_ids', 'attention_mask', 'position_ids']
-            # )
+            rollings = self.tensor_fn.cut_to_effective_len(
+                rollings,
+                keys=['input_ids', 'attention_mask', 'position_ids'],
+                cut_left=False
+            )
 
             # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
             rollings_active = {

@@ -50,6 +50,11 @@ class TensorHelper:
         padded_tensor, _ = self.convert_pad_structure(concatenated, pad_to_left)
         return padded_tensor
 
+    def concatenate_with_no_padding(self, tensors: List[torch.Tensor]) -> torch.Tensor:
+        """Concatenate tensors and handle padding."""
+        concatenated = torch.cat(tensors, dim=1)
+        return concatenated
+
     def example_level_pad(self, responses: torch.Tensor,
                           responses_str: List[str],
                           active_mask: torch.Tensor) -> Tuple[torch.Tensor, List[str]]:

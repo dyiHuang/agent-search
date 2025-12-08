@@ -6,7 +6,7 @@ data:
   val_files: ./data/test.parquet
   prompt_key: prompt
   max_prompt_length: 256
-  max_response_length: 100
+  max_response_length: 1024
   max_start_length: 512
   train_batch_size: ${global_batch_size}
   val_batch_size: 256
