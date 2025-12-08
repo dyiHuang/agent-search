@@ -1410,7 +1410,7 @@ class Qwen2MegatronModel(MegatronModule):
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
 
-        # input_ids = batch_dict["input_ids"].to('cuda')
+        input_ids = batch_dict["input_ids"].to('cuda')
 
         # utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
         utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
