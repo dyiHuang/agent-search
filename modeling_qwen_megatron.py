@@ -835,6 +835,9 @@ class Qwen2MegatronModel(MegatronModule):
         causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
                                                        inference_context, seq_len)
 
+        utils.print_rank_0(f"Qwen2MegatronModel forward attention_mask={attention_mask}")
+        utils.print_rank_0(f"Qwen2MegatronModel forward attention_mask.shape={attention_mask.shape}")
+        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping}")
         utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
@@ -1114,8 +1117,8 @@ class Qwen2MegatronModel(MegatronModule):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model.forward(input_ids=micro_batch["input_ids"], attention_mask=None,
-                                   # attention_mask=micro_batch["attention_mask"],
+            output = model.forward(input_ids=micro_batch["input_ids"],
+                                   attention_mask=micro_batch["attention_mask"],
                                    only_last_token=only_last_token,
                                    inference_context=inference_context)
             if inference_context is not None:
