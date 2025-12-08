@@ -1405,7 +1405,6 @@ class Qwen2MegatronModel(MegatronModule):
             input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=150).to(
                 'cuda')
             input_ids = torch.cat((input_ids1, input_ids2), dim=0)
-            utils.print_rank_0(f"input_ids[0]:{tokenizer.decode(input_ids[0])}")
             # input_ids = input_ids1
         # test_prompt = "Hello"
         # if tokenizer is not None:
@@ -1414,7 +1413,7 @@ class Qwen2MegatronModel(MegatronModule):
             # 如果没有tokenizer，使用简单数字
             input_ids = torch.tensor([[1, 2, 3]], device='cuda')
 
-        # input_ids = batch_dict["input_ids"][0:2].to('cuda')
+        input_ids = batch_dict["input_ids"].to('cuda')
 
         # utils.print_rank_0(f"测试输入: '{test_prompt}' -> {input_ids.cpu().numpy()}")
         utils.print_rank_0(f"测试输入: 'input_ids.shape {input_ids.shape}'")
