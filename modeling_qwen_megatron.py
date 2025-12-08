@@ -1397,9 +1397,9 @@ class Qwen2MegatronModel(MegatronModule):
         ]
         if tokenizer is not None:
             # input_ids1 = tokenizer.encode("Hello", return_tensors="pt", padding="max_length", max_length=30).to('cuda')
-            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=512).to(
+            input_ids1 = tokenizer.encode(str_list[0], return_tensors="pt", padding="max_length", max_length=150).to(
                 'cuda')
-            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=512).to(
+            input_ids2 = tokenizer.encode(str_list[1], return_tensors="pt", padding="max_length", max_length=150).to(
                 'cuda')
             input_ids = torch.cat((input_ids1, input_ids2), dim=0)
             # input_ids = input_ids1
