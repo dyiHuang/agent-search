@@ -1900,7 +1900,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
         def forward_step(batch_iter, model):
             micro_batch = next(batch_iter)
-            output = model.forward(input_ids=micro_batch["input_ids"], attention_mask=None,
+            output = model.forward(input_ids=micro_batch["input_ids"], attention_mask=micro_batch["attention_mask"],
                                    only_last_token=only_last_token, inference_context=inference_context)
             if inference_context is not None:
                 inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
