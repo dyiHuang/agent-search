@@ -836,9 +836,10 @@ class Qwen2MegatronModel(MegatronModule):
                                                        inference_context, seq_len)
 
         utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(input_ids[0])}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping['full_attention'][0]}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping.shape={causal_mask_mapping['full_attention'][0].shape}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping sum={torch.sum(causal_mask_mapping['full_attention'][0][-1])}")
+        if causal_mask_mapping is not None and causal_mask_mapping['full_attention'] is not None:
+            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping['full_attention'][0]}")
+            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping.shape={causal_mask_mapping['full_attention'][0].shape}")
+            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping sum={torch.sum(causal_mask_mapping['full_attention'][0][-1])}")
         utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
@@ -895,7 +896,7 @@ class Qwen2MegatronModel(MegatronModule):
                 kv_offset=0,
                 mask_function=causal_mask_function,
                 attention_mask=attention_mask,
-                allow_is_causal_skip=attention_mask is None or seq_len == 1,  # additional kwarg for sdpa
+                allow_is_causal_skip=True,  # additional kwarg for sdpa
                 local_size=None,  # Additional kwarg for sdpa
                 dtype=hidden_states.dtype,  # Additional kwarg for eager
             )
