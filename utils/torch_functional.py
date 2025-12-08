@@ -237,6 +237,7 @@ def tokenize_and_postprocess_data(prompt: str,
 
     input_ids = input_data['input_ids']
     attention_mask = input_data['attention_mask']
+    prompt = f"system\nYou are a helpful assistant.\nuser\nAnswer the given question. You must conduct reasoning inside <think> and </think> first every time you get new information. After reasoning, if you find you lack some knowledge, you can call a search engine by <search> query </search> and it will return the top searched results between <information> and </information>. You can search as many times as your want. If you find no further external knowledge needed, you can directly provide the answer inside <answer> and </answer>, without detailed illustrations. For example, <answer> Beijing </answer>. Question: The actress who portrayed Luna Lovegood also starred in an unfinished independent thriller drama based on the true story of who?\n\nassistant\n"
     input_ids = tokenizer.encode(prompt, return_tensors='pt', padding="max_length", max_length=max_length)
 
     assert input_ids.ndim == 2
