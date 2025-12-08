@@ -185,6 +185,7 @@ class LLMGenerationManager:
         """
         num_gpus = self.config.num_gpus
         prompt_len = active_batch["input_ids"].shape[1]
+        print(f"active_batch[attention_mask]={active_batch["attention_mask"]}")
         if num_gpus <= 1:
             output = self.actor.module.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
