@@ -233,11 +233,11 @@ def tokenize_and_postprocess_data(prompt: str,
     """
     assert truncation in ['left', 'right', 'error']
 
-    input_ids = tokenizer.encode(prompt, return_tensors='pt', padding="max_length", max_length=max_length)
-    attention_mask = None
+    input_data = tokenizer(prompt, return_tensors='pt', padding="max_length", max_length=max_length)
 
-    # input_ids = input_data['input_ids']
-    # attention_mask = input_data['attention_mask']
+    input_ids = input_data['input_ids']
+    attention_mask = input_data['attention_mask']
+    input_ids = tokenizer.encode(prompt, return_tensors='pt', padding="max_length", max_length=max_length)
 
     assert input_ids.ndim == 2
 
