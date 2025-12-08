@@ -835,9 +835,8 @@ class Qwen2MegatronModel(MegatronModule):
         causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
                                                        inference_context, seq_len)
 
-        utils.print_rank_0(f"Qwen2MegatronModel forward attention_mask={attention_mask}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward attention_mask.shape={attention_mask.shape}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping}")
+        utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(input_ids[0])}")
+        utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping['full_attention'][0]}")
         utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
