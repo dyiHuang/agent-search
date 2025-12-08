@@ -131,7 +131,7 @@ class RLHFDataset(Dataset):
         else:
             print(f"chat[0]['content']: {chat[0]['content']}")
             prompt_with_chat_template = chat[0]['content']
-        # prompt_with_chat_template = chat
+        prompt_with_chat_template = f"system\nYou are a helpful assistant.\nuser\n{chat[0]['content']}\n\nassistant\n"
 
         print(f"prompt_with_chat_template: {prompt_with_chat_template}")
 
