@@ -94,6 +94,8 @@ class MegatronDeepSpeedPPOTrainer:
         for name, param in self.actor.named_parameters():
             param.requires_grad = True
 
+        self.actor.tokenizer = self.tokenizer
+
         # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
 
