@@ -547,7 +547,7 @@ class MegatronDeepSpeedPPOTrainer:
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
 
-                utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(batch_dict["input_ids"][0], skip_special_tokens=True)}")
+                utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(batch_dict["input_ids"][0])}")
                 self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
 
                 continue
