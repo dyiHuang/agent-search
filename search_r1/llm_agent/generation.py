@@ -526,7 +526,7 @@ If I want to give the final answer, I should put the answer between <answer> and
                 except:
                     # 解析失败则直接用原字符串
                     content = doc_item.strip()
-                text = "\n".join(content.split("\n")[1:])
+                text = content
                 title = "_title_"
             else:
                 text = "_content_"
