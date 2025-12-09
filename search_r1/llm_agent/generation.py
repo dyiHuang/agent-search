@@ -544,10 +544,12 @@ If I want to give the final answer, I should put the answer between <answer> and
             for chunk in resp.output:  # 遍历每一个实时返回的片段（chunk）
                 chunk_type = getattr(chunk, "type", "")
                 print(chunk_type)
+                max_content = ""
                 if chunk_type == "message":
                     for content in chunk.content:
-                        if content.type == "output_text":
-                            results.append(content.text)
+                        if content.type == "output_text" and len(content.text) > len(max_content):
+                            max_content = content.text
+                results.append(max_content)
 
         if not results:
             print(f"[Warning] results is empty")
