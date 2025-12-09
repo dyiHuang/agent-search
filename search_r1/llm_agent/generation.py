@@ -1,16 +1,22 @@
 import json
+import os
 
 import torch
 import re
 from typing import List, Dict, Any, Tuple
 from typing_extensions import LiteralString
 from dataclasses import dataclass
+from volcenginesdkarkruntime import Ark
 
 from torch import Tensor
 
 from .tensor_helper import TensorHelper, TensorConfig
 
 import requests
+
+client = Ark(
+    base_url='https://ark.cn-beijing.volces.com/api/v3',
+    api_key=os.environ.get("ARK_API_KEY"))
 
 
 @dataclass
@@ -421,7 +427,7 @@ class LLMGenerationManager:
 
         search_queries = [content for action, content in zip(cur_actions, contents) if action == 'search']
         if do_search:
-            search_results = self.batch_search(search_queries)
+            search_results = self.batch_search_by_doubao(search_queries)
             assert len(search_results) == sum([1 for action in cur_actions if action == 'search'])
         else:
             search_results = [''] * sum([1 for action in cur_actions if action == 'search'])
@@ -499,6 +505,51 @@ If I want to give the final answer, I should put the answer between <answer> and
         results = self._batch_search(queries)['result']
 
         return [self._passages2string(result) for result in results]
+
+    def batch_search_by_doubao(self, queries: List[str] = None) -> list[str]:
+        """
+        Batchified search for queries.
+        Args:
+            queries: queries to call the search engine
+        Returns:
+            search results which is concatenated into a string
+        """
+        if not queries:
+            print(f"[Warning] queries is empty")
+            return []
+        tools = [{
+            "type": "web_search",
+            "max_keyword": 2,
+            "sources": [],
+        }]
+        query_str = ""
+        for q in queries:
+            query_str = "".join([query_str, "<search>", q, "</search>\n"])
+        input = [{
+            "content": f"检索<search>和</search>之间的内容，并用简短的最多150个英文token总结\n{query_str}",
+            "role": "user"}]
+        resp = client.responses.create(
+            model="doubao-seed-1-6-flash-250828",
+            input=input,
+            max_output_tokens=150,
+            thinking={"type": "disabled"},
+            tools=tools,
+        )
+        print(f"client.responses.create, input={input}, resp={resp}")
+
+        results = []
+        for chunk in resp.output:  # 遍历每一个实时返回的片段（chunk）
+            chunk_type = getattr(chunk, "type", "")
+            print(chunk_type)
+            if chunk_type == "message":
+                for content in chunk.content:
+                    if content.type == "output_text":
+                        results.append(content.text)
+
+        if not results:
+            print(f"[Warning] results is empty")
+
+        return results
 
     def _batch_search(self, queries):
 
