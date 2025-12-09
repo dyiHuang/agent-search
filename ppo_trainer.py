@@ -48,13 +48,13 @@ class MegatronDeepSpeedPPOTrainer:
         # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # 加载数据集（分布式采样）
-        self._create_dataloader()
-
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
 
-        # 2. 配置 LoRa
+        # 2. 加载数据集（分布式采样）
+        self._create_dataloader()
+
+        # 3. 配置 LoRa
         self.lora_config = LoraConfig(
             # r=config.lora_r,
             # lora_alpha=config.lora_alpha,
@@ -64,7 +64,7 @@ class MegatronDeepSpeedPPOTrainer:
             # task_type="CAUSAL_LM"
         )
 
-        # 3. 构建 PPO 三模型
+        # 4. 构建 PPO 三模型
         self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config, is_actor=True)
@@ -96,7 +96,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         self.actor.tokenizer = self.tokenizer
 
-        # 4. 初始化 Deepspeed 引擎（ZeRO 优化）
+        # 5. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
 
 
@@ -278,14 +278,6 @@ class MegatronDeepSpeedPPOTrainer:
             print(
                 f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
 
-    # def _load_dataset(self):
-    #     """加载分布式数据集（每个 rank 处理部分数据）"""
-    #     dataset = load_dataset("json", data_files=self.config.data_file, split="train")
-    #     # 分布式采样器
-    #     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-    #     dataloader = DataLoader(dataset, sampler=sampler, batch_size=self.config.batch_size, shuffle=False)
-    #     return dataloader
-
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
         # TODO: we have to make sure the batch size is divisible by the dp size
@@ -306,7 +298,14 @@ class MegatronDeepSpeedPPOTrainer:
                                                                                    random_state=42)
         utils.print_rank_0(f"filtered training dataset size: {len(self.train_dataset.dataframe)}")
 
+        data_parallel_world_size = parallel_state.get_data_parallel_world_size()
+        data_parallel_rank = parallel_state.get_data_parallel_rank()
+        train_sampler = torch.utils.data.distributed.DistributedSampler(self.train_dataset,
+                                                                        num_replicas=data_parallel_world_size,
+                                                                        rank=data_parallel_rank,
+                                                                        seed=self.config.megatron.seed + data_parallel_rank)
         self.train_dataloader = DataLoader(dataset=self.train_dataset,
+                                           sampler=train_sampler,
                                            batch_size=self.config.data.train_batch_size,
                                            shuffle=self.config.data.shuffle_train_dataloader,
                                            drop_last=True,
@@ -328,7 +327,12 @@ class MegatronDeepSpeedPPOTrainer:
                                                                                random_state=42)
         utils.print_rank_0(f"filtered validation dataset size: {len(self.val_dataset.dataframe)}")
 
+        val_sampler = torch.utils.data.distributed.DistributedSampler(self.train_dataset,
+                                                                      num_replicas=data_parallel_world_size,
+                                                                      rank=data_parallel_rank,
+                                                                      seed=self.config.megatron.seed + data_parallel_rank)
         self.val_dataloader = DataLoader(dataset=self.val_dataset,
+                                         sampler=val_sampler,
                                          batch_size=self.config.data.val_batch_size,
                                          shuffle=False,
                                          drop_last=True,
