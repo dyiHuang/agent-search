@@ -307,7 +307,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.train_dataloader = DataLoader(dataset=self.train_dataset,
                                            sampler=train_sampler,
                                            batch_size=self.config.data.train_batch_size,
-                                           shuffle=self.config.data.shuffle_train_dataloader,
+                                           # shuffle=self.config.data.shuffle_train_dataloader,
                                            drop_last=True,
                                            collate_fn=collate_fn)
 
@@ -334,7 +334,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.val_dataloader = DataLoader(dataset=self.val_dataset,
                                          sampler=val_sampler,
                                          batch_size=self.config.data.val_batch_size,
-                                         shuffle=False,
+                                         # shuffle=False,
                                          drop_last=True,
                                          collate_fn=collate_fn)
 
