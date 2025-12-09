@@ -1,4 +1,4 @@
-global_batch_size: 4
+global_batch_size: 1
 
 data:
   tokenizer: null
@@ -92,7 +92,7 @@ max_turns: 2
 
 actor:
   strategy: megatron  # This is for backward-compatibility
-  ppo_mini_batch_size: 2  # for update
+  ppo_mini_batch_size: 1  # for update
   ppo_micro_batch_size: 1  # for search
   clip_ratio: 0.2
   entropy_coeff: 0.001
