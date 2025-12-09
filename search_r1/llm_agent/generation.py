@@ -525,22 +525,22 @@ If I want to give the final answer, I should put the answer between <answer> and
             "max_keyword": 2,
             "sources": [],
         }]
-        query_str = ""
+        results = []
         for q in queries:
+            query_str = ""
             query_str = "".join([query_str, "<search>", q, "</search>\n"])
-            input = [{
+            _input = [{
                 "content": f"检索<search>和</search>之间的内容，并用简短的最多150个英文token总结\n{query_str}",
                 "role": "user"}]
             resp = client.responses.create(
                 model="doubao-seed-1-6-flash-250828",
-                input=input,
+                input=_input,
                 max_output_tokens=150,
                 thinking={"type": "disabled"},
                 tools=tools,
             )
-            print(f"client.responses.create, input={input}, resp={resp}")
+            print(f"client.responses.create, input={_input}, resp={resp}")
 
-            results = []
             for chunk in resp.output:  # 遍历每一个实时返回的片段（chunk）
                 chunk_type = getattr(chunk, "type", "")
                 print(chunk_type)
