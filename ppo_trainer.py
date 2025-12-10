@@ -81,15 +81,15 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
-        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
-                                                    qwen_model_path=config.qwen_model_path)
-        self.reference.eval()
-        utils.print_rank_0(self.reference)
-        for name, param in self.reference.named_parameters():
-            param.requires_grad = False
-            # param.data = param.data.to(torch.float32)
-        self.reference.config.enable_autocast = True
-        self.reference.config.autocast_dtype = torch.bfloat16
+        # self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        #                                             qwen_model_path=config.qwen_model_path)
+        # self.reference.eval()
+        # utils.print_rank_0(self.reference)
+        # for name, param in self.reference.named_parameters():
+        #     param.requires_grad = False
+        #     # param.data = param.data.to(torch.float32)
+        # self.reference.config.enable_autocast = True
+        # self.reference.config.autocast_dtype = torch.bfloat16
         # 确保参数可训练
         for name, param in self.actor.named_parameters():
             param.requires_grad = True

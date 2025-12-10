@@ -71,7 +71,7 @@ deepspeed:
     use_node_local_storage: True
     path: ./checkpoints
 
-qwen_model_path: Qwen/Qwen2.5-3B # qwen模型hf id
+qwen_model_path: Qwen/Qwen2.5-7B # qwen模型hf id
 
 megatron:
   master_addr: localhost
@@ -141,7 +141,7 @@ critic:
     override_opt_param_scheduler: False
 
 rollout:
-  max_new_token: 1024
+  max_new_token: 640
   temperature: 1.0
   top_k: -1
 
