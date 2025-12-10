@@ -122,7 +122,7 @@ class LLMGenerationManager:
 
         # Create attention mask and position ids
         new_attention_mask = self.tensor_fn.create_attention_mask(new_input_ids)
-        new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
+        # new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
 
         # Cut to appropriate length
         effective_len = new_attention_mask.sum(dim=1).max()
@@ -130,7 +130,7 @@ class LLMGenerationManager:
 
         new_rollings = {
             'input_ids': new_input_ids[:, -max_len:].to('cuda'),
-            'position_ids': new_position_ids[:, -max_len:].to('cuda'),
+            # 'position_ids': new_position_ids[:, -max_len:].to('cuda'),
             'attention_mask': new_attention_mask[:, -max_len:].to('cuda')
         }
 
