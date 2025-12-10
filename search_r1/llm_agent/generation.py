@@ -360,7 +360,7 @@ class LLMGenerationManager:
         if active_mask.sum():
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
-                keys=['input_ids', 'attention_mask', 'position_ids']
+                keys=['input_ids', 'attention_mask']
             )
 
             # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
