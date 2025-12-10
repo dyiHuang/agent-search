@@ -272,6 +272,7 @@ class MegatronDeepSpeedPPOTrainer:
                 optimizer=critic_optimizer.optimizer,
                 config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
+                mpu=parallel_state,
                 # model_parameters=self.critic.parameters()
             )
             print(
