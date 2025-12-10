@@ -373,7 +373,7 @@ class LLMGenerationManager:
                     responses_ids,
                 )
             else:
-                curr_active_mask = torch.tensor([], dtype=torch.bool)
+                curr_active_mask = torch.ones(gen_batch['input_ids'].shape[0], dtype=torch.bool)
 
             original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings, curr_active_mask)
             active_mask = active_mask * curr_active_mask
