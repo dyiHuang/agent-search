@@ -408,7 +408,7 @@ class LLMGenerationManager:
             group=parallel_state.get_model_parallel_group())
         rollings = {k: v.to('cpu') for k, v in rollings.items()}
         original_right_side = {k: v.to('cpu') for k, v in original_right_side.items()}
-        curr_active_mask.to('cpu')
+        curr_active_mask = curr_active_mask.to('cpu')
         return original_right_side, rollings, curr_active_mask
 
     @staticmethod
