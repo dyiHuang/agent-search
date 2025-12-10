@@ -178,7 +178,7 @@ class LLMGenerationManager:
                 pad_to_left=False
             )
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
-        max_len = min(self.config.max_prompt_length, effective_len)
+        max_len = min(self.config.max_response_length, effective_len)
 
         return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
 
