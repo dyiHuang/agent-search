@@ -26,7 +26,7 @@ class TensorHelper:
                 result[key] = tensor_dict[key][:, -effective_len:]
             else:
                 result[key] = tensor_dict[key][:, :effective_len]
-        filtered_result = {k: v.to('cuda') for k, v in result.items() if k in keys}
+        filtered_result = {k: v for k, v in result.items() if k in keys}
         return filtered_result
 
     def convert_pad_structure(self, tensor: torch.Tensor, pad_to_left: bool = True) -> Tuple[

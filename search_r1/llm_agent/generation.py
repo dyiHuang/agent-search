@@ -129,9 +129,9 @@ class LLMGenerationManager:
         max_len = min(self.config.max_response_length, effective_len)
 
         new_rollings = {
-            'input_ids': new_input_ids[:, -max_len:].to('cuda'),
+            'input_ids': new_input_ids[:, -max_len:],
             # 'position_ids': new_position_ids[:, -max_len:].to('cuda'),
-            'attention_mask': new_attention_mask[:, -max_len:].to('cuda')
+            'attention_mask': new_attention_mask[:, -max_len:]
         }
 
         return new_rollings
@@ -183,7 +183,7 @@ class LLMGenerationManager:
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
         max_len = min(self.config.max_response_length, effective_len)
 
-        return {'responses': responses[:, :max_len].to('cuda'), 'responses_with_info_mask': responses_with_info_mask[:, :max_len].to('cuda')}
+        return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
 
     def _generate_with_gpu_padding(self, active_batch: Dict) -> Dict:
         """
@@ -336,6 +336,9 @@ class LLMGenerationManager:
                     responses_ids,
                     next_obs_ids
                 )
+
+            rollings = {k: v.to('cuda') for k, v in rollings.items()}
+            original_right_side = {k: v.to('cuda') for k, v in original_right_side.items()}
             torch_functional.broadcast_dict_tensor(
                 rollings,
                 src=parallel_state.get_model_parallel_src_rank(),
@@ -344,6 +347,8 @@ class LLMGenerationManager:
                 original_right_side,
                 src=parallel_state.get_model_parallel_src_rank(),
                 group=parallel_state.get_model_parallel_group())
+            rollings = {k: v.to('cpu') for k, v in rollings.items()}
+            original_right_side = {k: v.to('cpu') for k, v in original_right_side.items()}
 
         meta_info = {}
         # final LLM rollout
