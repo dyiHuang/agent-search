@@ -397,21 +397,27 @@ class LLMGenerationManager:
 
         return self._compose_final_output(original_left_side, original_right_side, meta_info)
 
-    def align_shape(self, local_rank, tensor_dict):
+    @staticmethod
+    def align_shape(local_rank, tensor_dict):
         for key in sorted(tensor_dict.keys()):
             t = tensor_dict[key]
             if local_rank == parallel_state.get_model_parallel_src_rank():
                 # 源进程广播张量属性
                 shape = t.shape
-                torch.distributed.broadcast_object_list([shape], src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group())
+
             else:
                 # 非源进程接收属性
                 shape = None
-                torch.distributed.broadcast_object_list([shape], src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group())
+            obj_list = [shape]
+            torch.distributed.broadcast_object_list(obj_list, src=parallel_state.get_model_parallel_src_rank(),
+                                                    group=parallel_state.get_model_parallel_group())
+            shape = obj_list[0]
+            if local_rank != parallel_state.get_model_parallel_src_rank():
                 # 对齐张量属性
                 new_t = torch.zeros(shape, device=t.device, dtype=t.dtype)
                 new_t[:, :t.shape[1]] = t
                 tensor_dict[key] = new_t
+
 
     def _compose_final_output(self, left_side: Dict,
                               right_side: Dict,
