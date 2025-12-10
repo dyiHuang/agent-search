@@ -561,7 +561,8 @@ class MegatronDeepSpeedPPOTrainer:
 
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
-                utils.print_rank_0(f"rollout successful:{self.global_steps}, "
+                print(f"rollout successful:{self.global_steps}, "
+                                   f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                                    f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
 
                 continue
