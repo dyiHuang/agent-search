@@ -162,7 +162,7 @@ def broadcast_dict_tensor(tensors: Union[Dict[str, torch.Tensor], TensorDict], s
     TODO: optimize this. Technically, we only need one broadcast
     """
 
-    for key in tensors.sorted_keys:
+    for key in sorted(tensors.keys()):
         torch.distributed.broadcast(tensors[key], src=src, group=group, async_op=False)
 
 
