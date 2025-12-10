@@ -69,15 +69,15 @@ class MegatronDeepSpeedPPOTrainer:
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config, is_actor=True)
         utils.print_rank_0(self.actor)
-        self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
-                                                 qwen_model_path=config.qwen_model_path,
-                                                 lora_config=self.lora_config, is_critic=True)
-        utils.print_rank_0(self.critic)
-        # 确保参数可训练
-        for param in self.critic.value_head.parameters():
-            param.requires_grad = True
-        self.critic.config.enable_autocast = True
-        self.critic.config.autocast_dtype = torch.bfloat16
+        # self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        #                                          qwen_model_path=config.qwen_model_path,
+        #                                          lora_config=self.lora_config, is_critic=True)
+        # utils.print_rank_0(self.critic)
+        # # 确保参数可训练
+        # for param in self.critic.value_head.parameters():
+        #     param.requires_grad = True
+        # self.critic.config.enable_autocast = True
+        # self.critic.config.autocast_dtype = torch.bfloat16
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
@@ -243,40 +243,40 @@ class MegatronDeepSpeedPPOTrainer:
         print(
             f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
-        critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
-                                                  model_chunks=[self.critic])
-        critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
-                                                                   config=self.config.critic.optimizer)
-        assert isinstance(critic_optimizer, ChainedOptimizer)
-
-        # 1. 过滤掉空的 param_groups
-        #    创建一个新的列表来存放可训练参数非空的 groups
-        filtered_param_groups_critic = []
-        utils.print_rank_0(f"{critic_optimizer.optimizer.param_groups}")
-        for param_group in critic_optimizer.optimizer.param_groups:
-            trainable = sum(1 for param in param_group['params'] if param.requires_grad)
-            # 检查这个 group 的 'params' 列表是否为空
-            if trainable > 0:
-                filtered_param_groups_critic.append(param_group)
-        # 2. 验证过滤后是否还有参数组
-        if not filtered_param_groups_critic:
-            print(
-                f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
-                f"parameters to"
-                f"optimize.")
-            self.critic.step = lambda *args, **kwargs: None
-        else:
-
-            critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
-            self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
-                model=self.critic,
-                optimizer=critic_optimizer.optimizer,
-                config=deepspeed_dict,
-                lr_scheduler=critic_opt_param_scheduler,
-                # model_parameters=self.critic.parameters()
-            )
-            print(
-                f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
+        # critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
+        #                                           model_chunks=[self.critic])
+        # critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
+        #                                                            config=self.config.critic.optimizer)
+        # assert isinstance(critic_optimizer, ChainedOptimizer)
+        #
+        # # 1. 过滤掉空的 param_groups
+        # #    创建一个新的列表来存放可训练参数非空的 groups
+        # filtered_param_groups_critic = []
+        # utils.print_rank_0(f"{critic_optimizer.optimizer.param_groups}")
+        # for param_group in critic_optimizer.optimizer.param_groups:
+        #     trainable = sum(1 for param in param_group['params'] if param.requires_grad)
+        #     # 检查这个 group 的 'params' 列表是否为空
+        #     if trainable > 0:
+        #         filtered_param_groups_critic.append(param_group)
+        # # 2. 验证过滤后是否还有参数组
+        # if not filtered_param_groups_critic:
+        #     print(
+        #         f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
+        #         f"parameters to"
+        #         f"optimize.")
+        #     self.critic.step = lambda *args, **kwargs: None
+        # else:
+        #
+        #     critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
+        #     self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
+        #         model=self.critic,
+        #         optimizer=critic_optimizer.optimizer,
+        #         config=deepspeed_dict,
+        #         lr_scheduler=critic_opt_param_scheduler,
+        #         # model_parameters=self.critic.parameters()
+        #     )
+        #     print(
+        #         f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
