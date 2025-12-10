@@ -338,6 +338,8 @@ class LLMGenerationManager:
                 )
 
             local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
+            self.align_shape(local_rank, rollings)
+            self.align_shape(local_rank, original_right_side)
             device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
             rollings = {k: v.to(device) for k, v in rollings.items()}
             original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
@@ -393,6 +395,22 @@ class LLMGenerationManager:
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
         return self._compose_final_output(original_left_side, original_right_side, meta_info)
+
+    def align_shape(self, local_rank, tensor_dict):
+        for key in sorted(tensor_dict.keys()):
+            t = tensor_dict[key]
+            if local_rank == 0:
+                # 源进程广播张量属性
+                shape = t.shape
+                torch.distributed.broadcast_object_list([shape], src=0, group=parallel_state.get_model_parallel_group())
+            else:
+                # 非源进程接收属性
+                shape = None
+                torch.distributed.broadcast_object_list([shape], src=0, group=parallel_state.get_model_parallel_group())
+                # 对齐张量属性
+                new_t = torch.zeros(shape, device=t.device, dtype=t.dtype)
+                new_t[:, :t.shape[1]] = t
+                tensor_dict[key] = new_t
 
     def _compose_final_output(self, left_side: Dict,
                               right_side: Dict,
