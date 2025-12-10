@@ -418,18 +418,21 @@ class LLMGenerationManager:
             if local_rank == parallel_state.get_model_parallel_src_rank():
                 # 源进程广播张量属性
                 shape = t.shape
+                dtype = t.dtype
 
             else:
                 # 非源进程接收属性
                 shape = None
-            obj_list = [shape]
+                dtype = None
+            obj_list = [shape, dtype]
             torch.distributed.broadcast_object_list(obj_list, src=parallel_state.get_model_parallel_src_rank(),
                                                     group=parallel_state.get_model_parallel_group())
             shape = obj_list[0]
+            dtype = obj_list[1]
             if local_rank != parallel_state.get_model_parallel_src_rank():
                 # 对齐张量属性
-                new_t = torch.zeros(shape, device=t.device, dtype=t.dtype)
-                new_t[:, :t.shape[1]] = t
+                new_t = torch.empty(shape, device=t.device, dtype=dtype)
+                new_t[:, :t.shape[1]] = t.to(dtype=dtype)
                 tensor_dict[key] = new_t
 
 
