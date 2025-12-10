@@ -337,6 +337,7 @@ class LLMGenerationManager:
                     next_obs_ids
                 )
 
+            torch.distributed.barrier(group=parallel_state.get_model_parallel_group())
             local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
             self.align_shape(local_rank, rollings)
             self.align_shape(local_rank, original_right_side)
@@ -399,14 +400,14 @@ class LLMGenerationManager:
     def align_shape(self, local_rank, tensor_dict):
         for key in sorted(tensor_dict.keys()):
             t = tensor_dict[key]
-            if local_rank == 0:
+            if local_rank == parallel_state.get_model_parallel_src_rank():
                 # 源进程广播张量属性
                 shape = t.shape
-                torch.distributed.broadcast_object_list([shape], src=0, group=parallel_state.get_model_parallel_group())
+                torch.distributed.broadcast_object_list([shape], src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group())
             else:
                 # 非源进程接收属性
                 shape = None
-                torch.distributed.broadcast_object_list([shape], src=0, group=parallel_state.get_model_parallel_group())
+                torch.distributed.broadcast_object_list([shape], src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group())
                 # 对齐张量属性
                 new_t = torch.zeros(shape, device=t.device, dtype=t.dtype)
                 new_t[:, :t.shape[1]] = t
