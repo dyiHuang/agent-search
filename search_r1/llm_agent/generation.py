@@ -129,9 +129,9 @@ class LLMGenerationManager:
         max_len = min(self.config.max_response_length, effective_len)
 
         new_rollings = {
-            'input_ids': new_input_ids[:, -max_len:],
-            'position_ids': new_position_ids[:, -max_len:],
-            'attention_mask': new_attention_mask[:, -max_len:]
+            'input_ids': new_input_ids[:, -max_len:].to('cuda'),
+            'position_ids': new_position_ids[:, -max_len:].to('cuda'),
+            'attention_mask': new_attention_mask[:, -max_len:].to('cuda')
         }
 
         return new_rollings
@@ -183,7 +183,7 @@ class LLMGenerationManager:
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
         max_len = min(self.config.max_response_length, effective_len)
 
-        return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
+        return {'responses': responses[:, :max_len].to('cuda'), 'responses_with_info_mask': responses_with_info_mask[:, :max_len].to('cuda')}
 
     def _generate_with_gpu_padding(self, active_batch: Dict) -> Dict:
         """
