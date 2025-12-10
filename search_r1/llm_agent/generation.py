@@ -394,7 +394,7 @@ class LLMGenerationManager:
         self.align_shape(local_rank, rollings)
         self.align_shape(local_rank, original_right_side)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
-        curr_active_mask.to(device)
+        curr_active_mask = curr_active_mask.to(device)
         torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group(), async_op=False)
         rollings = {k: v.to(device) for k, v in rollings.items()}
         original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
