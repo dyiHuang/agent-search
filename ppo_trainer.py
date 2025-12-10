@@ -548,7 +548,7 @@ class MegatronDeepSpeedPPOTrainer:
     def train(self):
         """PPO 训练主循环"""
         self.actor.train()
-        self.critic.train()
+        # self.critic.train()
         self.global_steps = 0
 
         metrics = {}
