@@ -4,12 +4,15 @@ import os
 import torch
 import re
 from typing import List, Dict, Any, Tuple
+
+from megatron.core import parallel_state
 from typing_extensions import LiteralString
 from dataclasses import dataclass
 from volcenginesdkarkruntime import Ark
 
 from torch import Tensor
 
+from utils import torch_functional
 from .tensor_helper import TensorHelper, TensorConfig
 
 import requests
@@ -304,35 +307,43 @@ class LLMGenerationManager:
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
             gen_output = self._generate_with_gpu_padding(rollings_active)
+            if parallel_state.get_model_parallel_group().rank() == 0:
+                responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
+                responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
 
-            responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
-            responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
+                # Execute in environment and process observations
+                next_obs, dones, valid_action, is_search = self.execute_predictions(
+                    responses_str, self.tokenizer.pad_token, active_mask
+                )
 
-            # Execute in environment and process observations
-            next_obs, dones, valid_action, is_search = self.execute_predictions(
-                responses_str, self.tokenizer.pad_token, active_mask
-            )
+                curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
+                active_mask = active_mask * curr_active_mask
+                active_num_list.append(active_mask.sum().item())
+                turns_stats[curr_active_mask] += 1
+                valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
+                valid_search_stats += torch.tensor(is_search, dtype=torch.int)
 
-            curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
-            active_mask = active_mask * curr_active_mask
-            active_num_list.append(active_mask.sum().item())
-            turns_stats[curr_active_mask] += 1
-            valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
-            valid_search_stats += torch.tensor(is_search, dtype=torch.int)
+                next_obs_ids = self._process_next_obs(next_obs)
 
-            next_obs_ids = self._process_next_obs(next_obs)
-
-            # Update states
-            rollings = self._update_rolling_state(
+                # Update states
+                rollings = self._update_rolling_state(
+                    rollings,
+                    responses_ids,
+                    next_obs_ids
+                )
+                original_right_side = self._update_right_side(
+                    original_right_side,
+                    responses_ids,
+                    next_obs_ids
+                )
+            torch_functional.broadcast_dict_tensor(
                 rollings,
-                responses_ids,
-                next_obs_ids
-            )
-            original_right_side = self._update_right_side(
+                src=parallel_state.get_model_parallel_src_rank(),
+                group=parallel_state.get_model_parallel_group())
+            torch_functional.broadcast_dict_tensor(
                 original_right_side,
-                responses_ids,
-                next_obs_ids
-            )
+                src=parallel_state.get_model_parallel_src_rank(),
+                group=parallel_state.get_model_parallel_group())
 
         meta_info = {}
         # final LLM rollout

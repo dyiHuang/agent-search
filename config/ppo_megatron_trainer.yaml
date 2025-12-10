@@ -157,7 +157,7 @@ trainer:
 #  logger: ['console', 'wandb']
   logger: ['console']
   nnodes: 1
-  n_gpus_per_node: 1
+  n_gpus_per_node: 2
   save_freq: -1
   test_freq: 2
   critic_warmup: 0
