@@ -298,7 +298,7 @@ class LLMGenerationManager:
                 break
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
-                keys=['input_ids', 'attention_mask', 'position_ids'],
+                keys=['input_ids', 'attention_mask'],
                 cut_left=False
             )
 
