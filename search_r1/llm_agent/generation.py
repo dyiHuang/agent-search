@@ -317,8 +317,6 @@ class LLMGenerationManager:
                 )
 
                 curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
-                active_mask = active_mask * curr_active_mask
-                active_num_list.append(active_mask.sum().item())
                 turns_stats[curr_active_mask] += 1
                 valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
                 valid_search_stats += torch.tensor(is_search, dtype=torch.int)
@@ -336,8 +334,12 @@ class LLMGenerationManager:
                     responses_ids,
                     next_obs_ids
                 )
+            else:
+                curr_active_mask = torch.tensor([], dtype=torch.bool)
 
-            original_right_side, rollings = self.broadcast_dicts(original_right_side, rollings)
+            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings, curr_active_mask)
+            active_mask = active_mask * curr_active_mask
+            active_num_list.append(active_mask.sum().item())
 
         meta_info = {}
         # final LLM rollout
@@ -363,8 +365,6 @@ class LLMGenerationManager:
                 )
 
                 curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
-                active_mask = active_mask * curr_active_mask
-                active_num_list.append(active_mask.sum().item())
                 valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
                 valid_search_stats += torch.tensor(is_search, dtype=torch.int)
 
@@ -372,8 +372,12 @@ class LLMGenerationManager:
                     original_right_side,
                     responses_ids,
                 )
+            else:
+                curr_active_mask = torch.tensor([], dtype=torch.bool)
 
-            original_right_side, rollings = self.broadcast_dicts(original_right_side, rollings)
+            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings, curr_active_mask)
+            active_mask = active_mask * curr_active_mask
+            active_num_list.append(active_mask.sum().item())
 
         meta_info['turns_stats'] = turns_stats.tolist()
         meta_info['active_mask'] = active_mask.tolist()
@@ -384,12 +388,14 @@ class LLMGenerationManager:
 
         return self._compose_final_output(original_left_side, original_right_side, meta_info)
 
-    def broadcast_dicts(self, original_right_side, rollings):
+    def broadcast_dicts(self, original_right_side, rollings, curr_active_mask):
         torch.distributed.barrier(group=parallel_state.get_model_parallel_group())
         local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
         self.align_shape(local_rank, rollings)
         self.align_shape(local_rank, original_right_side)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+        curr_active_mask.to(device)
+        torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank, group=parallel_state.get_model_parallel_group(), async_op=False)
         rollings = {k: v.to(device) for k, v in rollings.items()}
         original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
         torch_functional.broadcast_dict_tensor(
@@ -402,7 +408,8 @@ class LLMGenerationManager:
             group=parallel_state.get_model_parallel_group())
         rollings = {k: v.to('cpu') for k, v in rollings.items()}
         original_right_side = {k: v.to('cpu') for k, v in original_right_side.items()}
-        return original_right_side, rollings
+        curr_active_mask.to('cpu')
+        return original_right_side, rollings, curr_active_mask
 
     @staticmethod
     def align_shape(local_rank, tensor_dict):
