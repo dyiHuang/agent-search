@@ -307,7 +307,7 @@ class LLMGenerationManager:
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
             gen_output = self._generate_with_gpu_padding(rollings_active)
-            if parallel_state.get_model_parallel_group().rank() == 0:
+            if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
 
@@ -337,8 +337,10 @@ class LLMGenerationManager:
                     next_obs_ids
                 )
 
-            rollings = {k: v.to('cuda') for k, v in rollings.items()}
-            original_right_side = {k: v.to('cuda') for k, v in original_right_side.items()}
+            local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
+            device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+            rollings = {k: v.to(device) for k, v in rollings.items()}
+            original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
             torch_functional.broadcast_dict_tensor(
                 rollings,
                 src=parallel_state.get_model_parallel_src_rank(),
