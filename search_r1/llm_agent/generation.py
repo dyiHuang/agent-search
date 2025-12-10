@@ -590,7 +590,7 @@ If I want to give the final answer, I should put the answer between <answer> and
                 "content": f"检索<search>和</search>之间的内容一次，并用英文直接返回查询到的结果，最多150个token\n{query_str}",
                 "role": "user"}]
             resp = client.responses.create(
-                model="doubao-seed-1-6-251015",
+                model="doubao-seed-1-6-flash-250828",
                 input=_input,
                 max_output_tokens=150,
                 thinking={"type": "disabled"},
