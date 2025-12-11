@@ -246,10 +246,10 @@ class MegatronDeepSpeedPPOTrainer:
         print(
             f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
-        critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
-                                                  model_chunks=[self.critic])
-        critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
-                                                                   config=self.config.critic.optimizer)
+        # critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
+        #                                           model_chunks=[self.critic])
+        # critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
+        #                                                            config=self.config.critic.optimizer)
         # assert isinstance(critic_optimizer, ChainedOptimizer)
         #
         # # 1. 过滤掉空的 param_groups
@@ -284,7 +284,7 @@ class MegatronDeepSpeedPPOTrainer:
                 model=self.critic,
                 config=deepspeed_dict,
                 mpu=parallel_state,
-                lr_scheduler=critic_opt_param_scheduler,
+                # lr_scheduler=critic_opt_param_scheduler,
                 model_parameters=self.critic.parameters()
             )
             print(
