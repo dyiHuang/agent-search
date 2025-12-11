@@ -723,7 +723,7 @@ class MegatronDeepSpeedPPOTrainer:
                 log_probs = log_probs.to(torch.float32)
                 utils.print_rank_0(f"ref log_probs.shape={log_probs.shape}")
             else:
-                log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1], self.reference.vocab_size),
+                log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1]+1, self.reference.vocab_size),
                                         dtype=torch.float32,
                                         device=utils.get_model_parallel_device())
 
