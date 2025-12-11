@@ -568,7 +568,7 @@ class MegatronDeepSpeedPPOTrainer:
                                    f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                                    f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
 
-                continue
+                # continue
 
                 # 2. 计算奖励
                 rewards = self._compute_reward(batch_dict, responses)

@@ -127,7 +127,7 @@ class RLHFDataset(Dataset):
 
         if self.tokenizer.chat_template:
             insert_content = ("Note: After you finish your answer inside <answer> and </answer>, "
-                                   "stop generating immediately.")
+                                   "stop generating immediately. ")
             # 定义分隔符（注意保留末尾的空格/标点，确保精准匹配）
             separator1 = "</answer>. "
             separator2 = "Question: "
