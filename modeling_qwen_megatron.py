@@ -814,7 +814,13 @@ class Qwen2MegatronModel(MegatronModule):
             #     rotary_pos_emb = rotary_pos_emb[:, -1:] if isinstance(rotary_pos_emb, torch.Tensor) else None
         else:
             # self.hidden_states should be passed by Megatron
-            hidden_states = self.input_tensor
+            print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                  f"self.input_tensor len:{len(self.input_tensor)}, "
+                  f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
+            if isinstance(self.input_tensor, list):
+                hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
+            else:
+                hidden_states = self.input_tensor
 
         # -------------------------- 修正注意力掩码维度 --------------------------
         # if attention_mask is not None:
@@ -1802,7 +1808,13 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
         else:
             # self.hidden_states should be passed by Megatron
-            hidden_states = self.input_tensor
+            print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                  f"self.input_tensor len:{len(self.input_tensor)}, "
+                  f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
+            if isinstance(self.input_tensor, list):
+                hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
+            else:
+                hidden_states = self.input_tensor
 
         seq_len = hidden_states.size(1)
         past_seen_tokens = inference_context.sequence_len_offset if inference_context is not None else 0
