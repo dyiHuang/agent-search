@@ -287,8 +287,8 @@ class MegatronDeepSpeedPPOTrainer:
                 lr_scheduler=critic_opt_param_scheduler,
                 model_parameters=self.critic.parameters()
             )
-        print(
-            f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
+            print(
+                f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
