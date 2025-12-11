@@ -1761,10 +1761,10 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
     def _freeze_actor_components(self):
         """冻结Actor的底层特征提取组件，仅训练价值头"""
-        if not self.embedding:
+        if self.embedding is not None:
             for param in self.embedding.parameters():
                 param.requires_grad = False
-        if not self.rotary_emb:
+        if self.rotary_emb is not None:
             for param in self.rotary_emb.parameters():
                 param.requires_grad = False
         for param in self.layers.parameters():
