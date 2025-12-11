@@ -126,6 +126,9 @@ class RLHFDataset(Dataset):
         chat = row_dict.pop(self.prompt_key)
 
         if self.tokenizer.chat_template:
+            chat[0]['content'] += ("**Note:** After you finish your answer inside <answer> and </answer>, "
+                                   "**stop generating** immediately. Do not"
+                                   "add any additional content or continue the conversation.\n")
             prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
         else:
             prompt_with_chat_template = chat[0]['content']
