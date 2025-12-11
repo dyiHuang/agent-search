@@ -793,7 +793,7 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
-            if self.critic_optimizer is not None:
+            if hasattr(self, 'critic_optimizer') and self.critic_optimizer is not None:
                 print(
                     f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 # 强制打印value_head参数的梯度（bfloat16下需注意精度）
