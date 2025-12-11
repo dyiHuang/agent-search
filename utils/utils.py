@@ -1,5 +1,7 @@
 from datetime import datetime
 from typing import Dict, Union
+
+from megatron.core import parallel_state
 from tensordict import TensorDict
 from torch.utils.data import DataLoader, Dataset
 import torch
@@ -235,3 +237,8 @@ def find_tensor_diff(tensor1: torch.Tensor, tensor2: torch.Tensor, atol: float =
     diff_indices = torch.nonzero(diff_mask, as_tuple=False).tolist()
     return [tuple(idx) for idx in diff_indices]
 
+
+def get_model_parallel_device():
+    local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    return device

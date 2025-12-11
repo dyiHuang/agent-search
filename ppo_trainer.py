@@ -667,7 +667,7 @@ class MegatronDeepSpeedPPOTrainer:
                 values = torch.cat([o for o in output], dim=0)  # (bs, seq_size)
                 values = values.to(torch.float32)
             else:
-                values = torch.empty_like(attention_mask, dtype=torch.float32)
+                values = torch.empty_like(attention_mask, dtype=torch.float32, device=utils.get_model_parallel_device())
 
             # utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
             # utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")
@@ -725,7 +725,7 @@ class MegatronDeepSpeedPPOTrainer:
             else:
                 log_probs = torch.empty(size=(input_ids.shape[0], input_ids.shape[1], self.reference.vocab_size),
                                         dtype=torch.float32,
-                                        device=input_ids.device)
+                                        device=utils.get_model_parallel_device())
 
             # broadcast across pp ranks
             torch.distributed.broadcast(tensor=log_probs,
