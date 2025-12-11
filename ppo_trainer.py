@@ -431,8 +431,8 @@ class MegatronDeepSpeedPPOTrainer:
                                            dtype=attention_mask.dtype)
 
         # 计算 reference 的 log_prob
-        # ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
-        ref_log_probs = None
+        ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
+        # ref_log_probs = None
 
         # 解码第一条输入，确认无乱码
         dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
@@ -662,7 +662,7 @@ class MegatronDeepSpeedPPOTrainer:
             output = self.critic.forward_backward_batch(batch=batches, forward_only=True)
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
-                values = torch.cat([o for o in output], dim=0)  # (bs, seq_size, 1)
+                values = torch.cat([o for o in output], dim=0)  # (bs, seq_size)
                 values = values.to(torch.float32)
             else:
                 values = torch.empty_like(attention_mask, dtype=torch.float32)
@@ -713,14 +713,15 @@ class MegatronDeepSpeedPPOTrainer:
                 batch=batches,
                 forward_only=True,
                 post_process_fn=compute_logprobs_fn
-            )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
+            )  # PP+TP下：LIST[batch_size, seq_size, vocab_size]
 
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
-                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
+                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size, vocab_size)
                 log_probs = log_probs.to(torch.float32)
+                utils.print_rank_0(f"ref log_probs.shape={log_probs.shape}")
             else:
-                log_probs = torch.empty(size=(input_ids.shape[0], input_ids.shape[1]),
+                log_probs = torch.empty(size=(input_ids.shape[0], input_ids.shape[1], self.reference.vocab_size),
                                         dtype=torch.float32,
                                         device=input_ids.device)
 

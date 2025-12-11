@@ -941,6 +941,7 @@ class Qwen2MegatronModel(MegatronModule):
             :param inference_context:
         """
         # 1. 初始化配置和设备
+        training_mode = self.training
         self.eval()  # 生成时切换为评估模式（禁用dropout）
         batch_size, current_seq_len = input_ids.shape
         device = input_ids.device
@@ -1055,7 +1056,7 @@ class Qwen2MegatronModel(MegatronModule):
             # i. 若所有样本都已完成，提前退出
             if finished_mask.all():
                 break
-
+        self.train(training_mode)
         return generated_ids
 
     def forward_backward_batch(self, batch: TensorDict, only_last_token=False,
