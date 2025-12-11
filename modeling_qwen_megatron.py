@@ -1769,7 +1769,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 param.requires_grad = False
         for param in self.layers.parameters():
             param.requires_grad = False
-        if not self.final_norm:
+        if self.final_norm is not None:
             self.final_norm.requires_grad_(False)  # RMSNorm通常也冻结
 
     def forward(
