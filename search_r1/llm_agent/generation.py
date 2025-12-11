@@ -171,14 +171,14 @@ class LLMGenerationManager:
                 right_side['responses_with_info_mask'],
                 cur_responses,
                 next_obs_ids,
-                pad_to_left=False
+                # pad_to_left=False
             )
         else:
             responses, responses_with_info_mask = self._info_masked_concatenate_with_padding(
                 right_side['responses'],
                 right_side['responses_with_info_mask'],
                 cur_responses,
-                pad_to_left=False
+                # pad_to_left=False
             )
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
         max_len = min(self.config.max_response_length, effective_len)
@@ -309,7 +309,8 @@ class LLMGenerationManager:
             gen_output = self._generate_with_gpu_padding(rollings_active)
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
-                responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
+                responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
+                                                                                active_mask)
 
                 # Execute in environment and process observations
                 next_obs, dones, valid_action, is_search = self.execute_predictions(
@@ -337,7 +338,8 @@ class LLMGenerationManager:
             else:
                 curr_active_mask = torch.ones(gen_batch['input_ids'].shape[0], dtype=torch.bool)
 
-            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings, curr_active_mask)
+            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings,
+                                                                                   curr_active_mask)
             active_mask = active_mask * curr_active_mask
             active_num_list.append(active_mask.sum().item())
 
@@ -357,7 +359,8 @@ class LLMGenerationManager:
 
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
-                responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str, active_mask)
+                responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
+                                                                                active_mask)
 
                 # # Execute in environment and process observations
                 _, dones, valid_action, is_search = self.execute_predictions(
@@ -375,7 +378,8 @@ class LLMGenerationManager:
             else:
                 curr_active_mask = torch.ones(gen_batch['input_ids'].shape[0], dtype=torch.bool)
 
-            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings, curr_active_mask)
+            original_right_side, rollings, curr_active_mask = self.broadcast_dicts(original_right_side, rollings,
+                                                                                   curr_active_mask)
             active_mask = active_mask * curr_active_mask
             active_num_list.append(active_mask.sum().item())
 
@@ -395,7 +399,8 @@ class LLMGenerationManager:
         self.align_shape(local_rank, original_right_side)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
         curr_active_mask = curr_active_mask.to(device)
-        torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank(), group=parallel_state.get_model_parallel_group(), async_op=False)
+        torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank(),
+                                    group=parallel_state.get_model_parallel_group(), async_op=False)
         rollings = {k: v.to(device) for k, v in rollings.items()}
         original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
         torch_functional.broadcast_dict_tensor(
@@ -434,7 +439,6 @@ class LLMGenerationManager:
                 new_t = torch.empty(shape, device=t.device, dtype=dtype)
                 new_t[:, :t.shape[1]] = t.to(dtype=dtype)
                 tensor_dict[key] = new_t
-
 
     def _compose_final_output(self, left_side: Dict,
                               right_side: Dict,
