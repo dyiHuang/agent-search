@@ -74,8 +74,9 @@ class MegatronDeepSpeedPPOTrainer:
                                                  lora_config=self.lora_config, is_critic=True)
         utils.print_rank_0(self.critic)
         # 确保参数可训练
-        for param in self.critic.value_head.parameters():
-            param.requires_grad = True
+        if self.critic.value_head is not None:
+            for param in self.critic.value_head.parameters():
+                param.requires_grad = True
         self.critic.config.enable_autocast = True
         self.critic.config.autocast_dtype = torch.bfloat16
         self.actor.config.enable_autocast = True
