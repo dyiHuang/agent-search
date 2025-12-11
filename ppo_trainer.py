@@ -589,6 +589,9 @@ class MegatronDeepSpeedPPOTrainer:
                 print(f"rollout successful:{self.global_steps}, "
                                    f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                                    f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
+                print(f"rollout response_mask:{response_mask}"
+                      f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                                   f"response_mask.shape:{response_mask.shape}")
 
                 # continue
 
