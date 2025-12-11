@@ -126,9 +126,20 @@ class RLHFDataset(Dataset):
         chat = row_dict.pop(self.prompt_key)
 
         if self.tokenizer.chat_template:
-            chat[0]['content'] += ("**Note:** After you finish your answer inside <answer> and </answer>, "
-                                   "**stop generating** immediately. Do not"
-                                   "add any additional content or continue the conversation.\n")
+            insert_content = ("Note: After you finish your answer inside <answer> and </answer>, "
+                                   "stop generating immediately.")
+            # 定义分隔符（注意保留末尾的空格/标点，确保精准匹配）
+            separator1 = "</answer>. "
+            separator2 = "Question: "
+
+            # 找到分隔符1的结束位置，拼接插入内容
+            if separator1 in chat[0]['content'] and separator2 in chat[0]['content']:
+                # 拆分文本为「分隔符1之前」和「分隔符1之后（包含Question）」两部分
+                part1 = chat[0]['content'].split(separator1)[0] + separator1
+                part2 = chat[0]['content'].split(separator1)[1]  # 包含Question及后续内容
+
+                # 插入自定义内容后重组文本
+                chat[0]['content'] = part1 + insert_content + part2
             prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
         else:
             prompt_with_chat_template = chat[0]['content']

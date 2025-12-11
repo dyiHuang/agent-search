@@ -696,7 +696,7 @@ class MegatronDeepSpeedPPOTrainer:
             # # 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
             # _logits = self.reference.gather_logits_across_tp(output)
             _logits = output[:, -_response_length - 1:-1].contiguous()
-            _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)
+            _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)  # (bs, seq_size)
             return _log_probs
 
         batches = TensorDict(
@@ -715,13 +715,13 @@ class MegatronDeepSpeedPPOTrainer:
                 batch=batches,
                 forward_only=True,
                 post_process_fn=compute_logprobs_fn
-            )  # PP+TP下：LIST[batch_size, seq_size, vocab_size]
+            )  # PP+TP下：LIST[batch_size, seq_size]
 
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
-                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size, vocab_size)
+                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
                 log_probs = log_probs.to(torch.float32)
-                utils.print_rank_0(f"ref log_probs.shape={log_probs.shape}")
+                print(f"ref log_probs.shape={log_probs.shape}")
             else:
                 log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1]),
                                         dtype=torch.float32,
