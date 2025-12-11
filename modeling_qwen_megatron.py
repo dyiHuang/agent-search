@@ -812,6 +812,8 @@ class Qwen2MegatronModel(MegatronModule):
             # if only_last_token:
             #     hidden_states = hidden_states[:, -1:]  # [batch, 1, hidden_size/tp_size]
             #     rotary_pos_emb = rotary_pos_emb[:, -1:] if isinstance(rotary_pos_emb, torch.Tensor) else None
+            seq_len = hidden_states.size(1)
+            batch_size = hidden_states.size(0)
         else:
             # self.hidden_states should be passed by Megatron
             print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
@@ -821,6 +823,9 @@ class Qwen2MegatronModel(MegatronModule):
                 hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
             else:
                 hidden_states = self.input_tensor
+            seq_len = hidden_states.size(0)
+            batch_size = hidden_states.size(1)
+        dtype = hidden_states.dtype
 
         # -------------------------- 修正注意力掩码维度 --------------------------
         # if attention_mask is not None:
@@ -829,7 +834,6 @@ class Qwen2MegatronModel(MegatronModule):
         #     attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
         # 检查Rotary Embedding
-        seq_len = hidden_states.size(1)
         past_seen_tokens = inference_context.sequence_len_offset if inference_context is not None else 0
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
@@ -838,7 +842,7 @@ class Qwen2MegatronModel(MegatronModule):
             0, past_seen_tokens + seq_len, device=hidden_states.device
         ).unsqueeze(0)
 
-        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
+        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, batch_size, dtype,
                                                        inference_context, seq_len)
 
         utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(input_ids[0])}")
@@ -852,7 +856,8 @@ class Qwen2MegatronModel(MegatronModule):
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
-        hidden_states = hidden_states.transpose(1, 0).contiguous()
+        if self.pp_rank == 0:
+            hidden_states = hidden_states.transpose(0, 1).contiguous()
         for layer in self.layers:
             # utils.print_rank_0(
             #     f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
@@ -884,10 +889,9 @@ class Qwen2MegatronModel(MegatronModule):
             return logits
         return hidden_states
 
-    def create_mask_mapping(self, attention_mask, cache_position, hidden_states, inference_context,
+    def create_mask_mapping(self, attention_mask, cache_position, batch_size, dtype, inference_context,
                             seq_len):
         causal_mask_mapping = {}
-        batch_size = hidden_states.size(0)
         if attention_mask is not None and attention_mask.ndim == 2:
             attention_mask = attention_mask.to(device=cache_position.device, dtype=torch.bool)
         mask_interface = ALL_MASK_ATTENTION_FUNCTIONS[self.qwen_config._attn_implementation]
@@ -904,7 +908,7 @@ class Qwen2MegatronModel(MegatronModule):
                 attention_mask=attention_mask,
                 allow_is_causal_skip=True,  # additional kwarg for sdpa
                 local_size=None,  # Additional kwarg for sdpa
-                dtype=hidden_states.dtype,  # Additional kwarg for eager
+                dtype=dtype,  # Additional kwarg for eager
             )
             causal_mask_mapping = {
                 "full_attention": causal_mask,
@@ -1805,6 +1809,8 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         if self.pp_rank == 0:
             # 1. 嵌入层 + Rotary编码（与Actor完全一致）
             hidden_states = self.embedding(input_ids)  # [batch, seq_len, hidden_size]
+            seq_len = hidden_states.size(1)
+            batch_size = hidden_states.size(0)
 
         else:
             # self.hidden_states should be passed by Megatron
@@ -1815,8 +1821,11 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
             else:
                 hidden_states = self.input_tensor
+            seq_len = hidden_states.size(0)
+            batch_size = hidden_states.size(1)
+        dtype = hidden_states.dtype
 
-        seq_len = hidden_states.size(1)
+
         past_seen_tokens = inference_context.sequence_len_offset if inference_context is not None else 0
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + seq_len, device=hidden_states.device
@@ -1825,10 +1834,11 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             0, past_seen_tokens + seq_len, device=hidden_states.device
         ).unsqueeze(0)
 
-        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, hidden_states,
+        causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, batch_size, dtype,
                                                        inference_context, seq_len)
 
-        hidden_states = hidden_states.transpose(0, 1)
+        if self.pp_rank == 0:
+            hidden_states = hidden_states.transpose(0, 1).contiguous()
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
