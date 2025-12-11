@@ -793,25 +793,26 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
-            print(
-                f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
-            # 强制打印value_head参数的梯度（bfloat16下需注意精度）
-            for name, param in self.critic.value_head.named_parameters():
-                if param.grad is None:
-                    print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
-                else:
-                    grad_norm = param.grad.norm().item()
-                    print(
-                        f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+            if self.critic_optimizer is not None:
+                print(
+                    f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
+                # 强制打印value_head参数的梯度（bfloat16下需注意精度）
+                for name, param in self.critic.value_head.named_parameters():
+                    if param.grad is None:
+                        print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
+                    else:
+                        grad_norm = param.grad.norm().item()
+                        print(
+                            f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
-            # self.critic_value_head.allreduce_gradients()
-            # self.critic_value_head.step(lr_kwargs={'increment': increment})
+                # self.critic_value_head.allreduce_gradients()
+                # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
-            self.critic.allreduce_gradients()
-            self.critic.step(lr_kwargs={'increment': increment})
+                self.critic.allreduce_gradients()
+                self.critic.step(lr_kwargs={'increment': increment})
 
-            update_successful = self.critic.was_step_applied()
-            utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
+                update_successful = self.critic.was_step_applied()
+                utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
