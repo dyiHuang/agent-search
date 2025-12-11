@@ -129,7 +129,7 @@ class RLHFDataset(Dataset):
             prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
         else:
             prompt_with_chat_template = chat[0]['content']
-        prompt_with_chat_template = f"system\nYou are a helpful assistant.\nuser\n{chat[0]['content']}\n\nassistant\n"
+        # prompt_with_chat_template = f"system\nYou are a helpful assistant.\nuser\n{chat[0]['content']}\n\nassistant\n"
 
 
         input_ids, attention_mask = torch_functional.tokenize_and_postprocess_data(prompt=prompt_with_chat_template,
