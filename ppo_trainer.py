@@ -428,7 +428,7 @@ class MegatronDeepSpeedPPOTrainer:
                 response = outputs[:, prompt_len:]
 
         print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
-        response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
+        response_mask = self._get_eos_mask(response_id=response,
                                            eos_token=self.tokenizer.eos_token_id,
                                            dtype=attention_mask.dtype)
 
@@ -592,6 +592,9 @@ class MegatronDeepSpeedPPOTrainer:
                 print(f"rollout response_mask:{response_mask}"
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                                    f"response_mask.shape:{response_mask.shape}")
+                print(f"rollout response:{response}"
+                      f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                                   f"response.shape:{response.shape}")
 
                 # continue
 
