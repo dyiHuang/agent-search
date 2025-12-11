@@ -1751,7 +1751,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             # 广播rank0的参数到所有TP rank
             torch.distributed.broadcast(
                 self.value_head.weight.data,
-                src=0,  # TP group内的rank0
+                src=parallel_state.get_tensor_model_parallel_src_rank(),  # TP group内的rank0
                 group=parallel_state.get_tensor_model_parallel_group()
             )
 
