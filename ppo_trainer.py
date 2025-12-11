@@ -449,31 +449,32 @@ class MegatronDeepSpeedPPOTrainer:
         response_id: [0, 0, 2, 42, 3, 5, 1, 0, 0]
         eos_mask:     [1, 1, 1, 1,  1, 1, 1, 0, 0]
         '''
-        # 1. 校验输入维度（确保是2D张量：[batch_size, seq_len]）
-        if response_id.dim() != 2:
-            raise ValueError(f"response_id must be 2D tensor, got {response_id.dim()}D")
-
-        batch_size, seq_len = response_id.shape
-
-        # 2. 找到每个序列中第一个出现eos_token的位置（关键：仅第一个）
-        # 生成布尔掩码：True表示该位置是eos_token
-        eos_positions = response_id == eos_token
-        # 计算每个序列中第一个eos的索引（未找到则设为seq_len）
-        # argmax会返回第一个True的索引，全False则返回0，因此需要修正
-        first_eos_idx = torch.argmax(eos_positions.int(), dim=1)  # 初始取第一个True的位置
-        # 修正：全False时，first_eos_idx设为seq_len（表示无eos）
-        no_eos_mask = ~eos_positions.any(dim=1)
-        first_eos_idx = torch.where(no_eos_mask, torch.tensor(seq_len, device=first_eos_idx.device), first_eos_idx)
-
-        # 3. 生成序列位置索引（[0,1,2,...,seq_len-1]），用于判断每个位置是否在第一个eos前
-        seq_indices = torch.arange(seq_len, device=response_id.device).unsqueeze(0).expand(batch_size, -1)
-
-        # 4. 生成eos_mask：第一个eos及之前为1，之后为0
-        # 注意：包含第一个eos的位置（与原逻辑一致）
-        eos_mask = seq_indices <= first_eos_idx.unsqueeze(1)
-
-        # 5. 转换为指定 dtype（保持与原函数输出格式一致）
-        eos_mask = eos_mask.to(dtype)
+        # # 1. 校验输入维度（确保是2D张量：[batch_size, seq_len]）
+        # if response_id.dim() != 2:
+        #     raise ValueError(f"response_id must be 2D tensor, got {response_id.dim()}D")
+        #
+        # batch_size, seq_len = response_id.shape
+        #
+        # # 2. 找到每个序列中第一个出现eos_token的位置（关键：仅第一个）
+        # # 生成布尔掩码：True表示该位置是eos_token
+        # eos_positions = response_id == eos_token
+        # # 计算每个序列中第一个eos的索引（未找到则设为seq_len）
+        # # argmax会返回第一个True的索引，全False则返回0，因此需要修正
+        # first_eos_idx = torch.argmax(eos_positions.int(), dim=1)  # 初始取第一个True的位置
+        # # 修正：全False时，first_eos_idx设为seq_len（表示无eos）
+        # no_eos_mask = ~eos_positions.any(dim=1)
+        # first_eos_idx = torch.where(no_eos_mask, torch.tensor(seq_len, device=first_eos_idx.device), first_eos_idx)
+        #
+        # # 3. 生成序列位置索引（[0,1,2,...,seq_len-1]），用于判断每个位置是否在第一个eos前
+        # seq_indices = torch.arange(seq_len, device=response_id.device).unsqueeze(0).expand(batch_size, -1)
+        #
+        # # 4. 生成eos_mask：第一个eos及之前为1，之后为0
+        # # 注意：包含第一个eos的位置（与原逻辑一致）
+        # eos_mask = seq_indices <= first_eos_idx.unsqueeze(1)
+        #
+        # # 5. 转换为指定 dtype（保持与原函数输出格式一致）
+        # eos_mask = eos_mask.to(dtype)
+        eos_mask = torch.where(response_id != eos_token, 1, 0).to(dtype=dtype)
         return eos_mask
 
     def _compute_reward(self, batch, responses):

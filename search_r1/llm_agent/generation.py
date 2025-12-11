@@ -171,14 +171,14 @@ class LLMGenerationManager:
                 right_side['responses_with_info_mask'],
                 cur_responses,
                 next_obs_ids,
-                # pad_to_left=False
+                pad_to_left=False
             )
         else:
             responses, responses_with_info_mask = self._info_masked_concatenate_with_padding(
                 right_side['responses'],
                 right_side['responses_with_info_mask'],
                 cur_responses,
-                # pad_to_left=False
+                pad_to_left=False
             )
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
         max_len = min(self.config.max_response_length, effective_len)
