@@ -592,9 +592,9 @@ class MegatronDeepSpeedPPOTrainer:
                 print(f"rollout response_mask:{response_mask}"
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                                    f"response_mask.shape:{response_mask.shape}")
-                print(f"rollout response:{response}"
+                print(f"rollout response:{responses}"
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                                   f"response.shape:{response.shape}")
+                                   f"response.shape:{responses.shape}")
 
                 # continue
 
