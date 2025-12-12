@@ -202,10 +202,10 @@ class MegatronDeepSpeedPPOTrainer:
 
         parallel_state_patch.add_missing_mpu_methods()
 
-        actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
-                                                 model_chunks=[self.actor])
-        opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
-        assert isinstance(actor_optimizer, ChainedOptimizer)
+        # actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
+        #                                          model_chunks=[self.actor])
+        # opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
+        # assert isinstance(actor_optimizer, ChainedOptimizer)
 
         # # 核心修复：强制开启所有参数的 requires_grad
         # for group in actor_optimizer.optimizer.param_groups:
@@ -236,15 +236,15 @@ class MegatronDeepSpeedPPOTrainer:
 
         # actor_optimizer.optimizer.param_groups = filtered_param_groups
         # 初始化 DeepSpeed 引擎
-        self.actor, self.optimizer, _, _ = deepspeed.initialize(
-            model=self.actor,
-            config=deepspeed_dict,
-            mpu=parallel_state,
-            lr_scheduler=opt_param_scheduler,
-            model_parameters=self.actor.parameters()
-        )
-        print(
-            f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
+        # self.actor, self.optimizer, _, _ = deepspeed.initialize(
+        #     model=self.actor,
+        #     config=deepspeed_dict,
+        #     mpu=parallel_state,
+        #     lr_scheduler=opt_param_scheduler,
+        #     model_parameters=self.actor.parameters()
+        # )
+        # print(
+        #     f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
 
         critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
                                                   model_chunks=[self.critic])
