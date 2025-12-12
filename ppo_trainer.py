@@ -1,8 +1,5 @@
 import os
 from typing import Dict
-
-from deepspeed import DeepSpeedConfig
-
 from utils import rotary_pos_emb_patch
 
 rotary_pos_emb_patch.apply_patch()
@@ -272,16 +269,18 @@ class MegatronDeepSpeedPPOTrainer:
                 f"optimize.")
             self.critic.step = lambda *args, **kwargs: None
         else:
-            conf = DeepSpeedConfig(deepspeed_dict, mpu=parallel_state)
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
                 optimizer=critic_optimizer.optimizer,
-                config=conf,
+                config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
-                mpu=None,
+                mpu=parallel_state,
                 # model_parameters=self.critic.parameters()
             )
+            self.critic.optimizer.model_parallel_group = None
+            self.critic.optimizer.model_parallel_world_size = 1
+            self.critic.optimizer.model_parallel_rank = 0
         # if parallel_state.is_pipeline_last_stage():
         #     self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
         #         model=self.critic,
