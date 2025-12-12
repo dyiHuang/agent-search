@@ -557,7 +557,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.actor.step(lr_kwargs={'increment': increment})
 
             update_successful = self.actor.was_step_applied()
-            utils.print_rank_0(f"actor update_successful:{update_successful}, increment:{increment}")
+            print(f"actor update_successful:{update_successful}, increment:{increment}")
 
             # self.optimizer.step()
 
@@ -833,7 +833,7 @@ class MegatronDeepSpeedPPOTrainer:
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
-                utils.print_rank_0(f"critic update_successful:{update_successful}, increment:{increment}")
+                print(f"critic update_successful:{update_successful}, increment:{increment}")
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
