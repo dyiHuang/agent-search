@@ -30,6 +30,7 @@ deepspeed:
       betas: [0.9, 0.999]
       eps: 1e-8
       weight_decay: 1e-7
+      max_grad_norm: 1.0
 
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
@@ -41,6 +42,7 @@ deepspeed:
     contiguous_gradients: True  # 连续梯度（减少内存碎片）
     ignore_unused_parameters: True
     allgather_partitions: True  # 关键：聚合梯度到分片
+    gradient_norm_clip: 1.0
 
   fp16:  # 混合精度配置（与 megatron-core 统一）
     enabled: False  # 禁用 FP16
