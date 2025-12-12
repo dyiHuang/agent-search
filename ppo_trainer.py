@@ -663,7 +663,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.critic.save_checkpoint(checkpoint_path)
 
     def write_ds_scalars(self, metrics):
-        if torch.distributed.get_rank() == 0:
+        if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
             writer.add_scalar("train/actor/entropy_loss", np.mean(metrics['actor/entropy_loss']),
                               global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
