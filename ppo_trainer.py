@@ -810,6 +810,7 @@ class MegatronDeepSpeedPPOTrainer:
                     if param.grad is None:
                         print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
                     else:
+                        param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
                         grad_norm = param.grad.norm().item()
                         print(
                             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
