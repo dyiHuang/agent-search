@@ -76,8 +76,8 @@ qwen_model_path: Qwen/Qwen2.5-7B # qwen模型hf id
 megatron:
   master_addr: localhost
   master_port: 6000
-  tensor_model_parallel_size: 2
-  pipeline_model_parallel_size: 1
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 2
 #  micro_batch_size: 64
   data_parallel_size: 1
 #  rank: 0
