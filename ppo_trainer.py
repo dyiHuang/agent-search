@@ -817,7 +817,7 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.critic_value_head.allreduce_gradients()
                 # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
-                # self.critic.allreduce_gradients()
+                self.critic.allreduce_gradients()
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
