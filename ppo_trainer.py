@@ -828,6 +828,7 @@ class MegatronDeepSpeedPPOTrainer:
                         grad_norm = param.grad.norm().item()
                         print(
                             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+                print(f"dp_group_ranks:{torch.distributed.get_group_ranks(self.critic_optimizer.dp_process_group)}")
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
