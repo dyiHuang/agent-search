@@ -16,7 +16,7 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits
 from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, model_parallel_cuda_manual_seed
 
 import core_algos
-from utils import utils, parallel_state_patch
+from utils import utils, parallel_state_patch, parallel_state_proxy, parallel_state_proxy_critic
 from modeling_qwen_megatron import build_qwen2_megatron_model
 from omegaconf import OmegaConf, open_dict
 import reward_score
@@ -100,7 +100,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 5. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
-        print(f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}")
+        print(f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
 
 
 
@@ -239,7 +239,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor, self.optimizer, _, _ = deepspeed.initialize(
             model=self.actor,
             config=deepspeed_dict,
-            mpu=parallel_state,
+            mpu=parallel_state_proxy,
             lr_scheduler=opt_param_scheduler,
             model_parameters=self.actor.parameters()
         )
@@ -275,12 +275,10 @@ class MegatronDeepSpeedPPOTrainer:
                 optimizer=critic_optimizer.optimizer,
                 config=deepspeed_dict,
                 lr_scheduler=critic_opt_param_scheduler,
-                mpu=parallel_state,
+                mpu=parallel_state_proxy_critic,
                 # model_parameters=self.critic.parameters()
             )
-            self.critic.optimizer.model_parallel_group = None
-            self.critic.optimizer.model_parallel_world_size = 1
-            self.critic.optimizer.model_parallel_rank = 0
+
         # if parallel_state.is_pipeline_last_stage():
         #     self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
         #         model=self.critic,
