@@ -552,6 +552,21 @@ class MegatronDeepSpeedPPOTrainer:
             #         has_grad = True
             # assert has_grad, "Actor无有效梯度！"
 
+            if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
+                print(f"===== Rank {torch.actor.get_rank()} 梯度检查 =====")
+                grad_nan_count = 0
+                grad_inf_count = 0
+                # 遍历所有参数的梯度分片
+                for name, param in self.critic.named_parameters():
+                    if param.grad is not None:
+                        nan = torch.isnan(param.grad).sum().item()
+                        inf = torch.isinf(param.grad).sum().item()
+                        grad_nan_count += nan
+                        grad_inf_count += inf
+                        if nan > 0 or inf > 0:
+                            print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
+                print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
+
             self.actor.allreduce_gradients()
 
             self.actor.step(lr_kwargs={'increment': increment})
@@ -814,6 +829,21 @@ class MegatronDeepSpeedPPOTrainer:
                         grad_norm = param.grad.norm().item()
                         print(
                             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+
+                if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
+                    print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
+                    grad_nan_count = 0
+                    grad_inf_count = 0
+                    # 遍历所有参数的梯度分片
+                    for name, param in self.critic.named_parameters():
+                        if param.grad is not None:
+                            nan = torch.isnan(param.grad).sum().item()
+                            inf = torch.isinf(param.grad).sum().item()
+                            grad_nan_count += nan
+                            grad_inf_count += inf
+                            if nan > 0 or inf > 0:
+                                print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
+                    print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
 
                 # self.critic_value_head.allreduce_gradients()
                 # self.critic_value_head.step(lr_kwargs={'increment': increment})
