@@ -552,6 +552,8 @@ class MegatronDeepSpeedPPOTrainer:
             #         has_grad = True
             # assert has_grad, "Actor无有效梯度！"
 
+            self.bf16_safe_clip_grad_norm(self.actor)
+
             if torch.distributed.get_rank() in [0, 1, 2, 3]:  # 仅关注rank2/3
                 print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
                 grad_nan_count = 0
@@ -594,6 +596,18 @@ class MegatronDeepSpeedPPOTrainer:
             # self.critic.backward(critic_loss)
 
         return metrics
+
+
+    @staticmethod
+    def bf16_safe_clip_grad_norm(model):
+        """BF16安全梯度裁剪：先限制梯度范围，再计算范数"""
+        # 步骤1：限制梯度绝对值（BF16安全范围：±1e3）
+        for param in model.parameters():
+            if param.grad is not None:
+                # 先替换NaN为0（兜底）
+                param.grad = torch.nan_to_num(param.grad, nan=0.0, posinf=1e3, neginf=-1e3)
+                # 强制裁剪到BF16有效范围，避免舍入误差
+                param.grad = torch.clamp(param.grad, min=-1e3, max=1e3)
 
     def train(self):
         """PPO 训练主循环"""
