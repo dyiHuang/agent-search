@@ -1102,6 +1102,12 @@ class Qwen2MegatronModel(MegatronModule):
             ref_log_probs = data['ref_log_probs']
             advantages = data['advantages']
 
+            print(f"rank:{torch.distributed.get_rank()} output NaN: {torch.isnan(output).sum().item()}, Inf: {torch.isinf(output).sum().item()}")
+            print(f"rank:{torch.distributed.get_rank()} advantages NaN: {torch.isnan(advantages).sum().item()}, Inf: {torch.isinf(advantages).sum().item()}")
+            print(f"rank:{torch.distributed.get_rank()} response_mask NaN: {torch.isnan(response_mask).sum().item()}, Inf: {torch.isinf(response_mask).sum().item()}")
+            print(f"rank:{torch.distributed.get_rank()} responses NaN: {torch.isnan(responses).sum().item()}, Inf: {torch.isinf(responses).sum().item()}")
+            print(f"rank:{torch.distributed.get_rank()} ref_log_probs NaN: {torch.isnan(ref_log_probs).sum().item()}, Inf: {torch.isinf(ref_log_probs).sum().item()}")
+
             clip_ratio = 0.2
             entropy_coeff = 0.1
             if not meta_info:
@@ -1112,6 +1118,8 @@ class Qwen2MegatronModel(MegatronModule):
             logits = output
             logits = logits[:, -response_length - 1:-1].contiguous()
             log_prob = vocab_parallel_log_probs_from_logits(logits, responses)
+            print(
+                f"rank:{torch.distributed.get_rank()} log_prob NaN: {torch.isnan(log_prob).sum().item()}, Inf: {torch.isinf(log_prob).sum().item()}")
             pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=ref_log_probs,
                                                                           log_prob=log_prob,
                                                                           advantages=advantages,
@@ -1126,6 +1134,8 @@ class Qwen2MegatronModel(MegatronModule):
                 'actor/pg_clipfrac': pg_clipfrac.detach().item(),
                 'actor/ppo_kl': ppo_kl.detach().item()
             }
+            print(f"rank:{torch.distributed.get_rank()} policy_loss: {policy_loss.item()}")
+            print(f"rank:{torch.distributed.get_rank()} stats: {stats}")
             return policy_loss, stats
 
         def forward_step(batch_iter, model):
