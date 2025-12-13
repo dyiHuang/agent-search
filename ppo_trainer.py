@@ -553,7 +553,7 @@ class MegatronDeepSpeedPPOTrainer:
             # assert has_grad, "Actor无有效梯度！"
 
             if torch.distributed.get_rank() in [0, 1, 2, 3]:  # 仅关注rank2/3
-                print(f"===== Rank {torch.actor.get_rank()} 梯度检查 =====")
+                print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
                 grad_nan_count = 0
                 grad_inf_count = 0
                 # 遍历所有参数的梯度分片
