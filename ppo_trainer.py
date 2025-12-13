@@ -557,7 +557,7 @@ class MegatronDeepSpeedPPOTrainer:
                 grad_nan_count = 0
                 grad_inf_count = 0
                 # 遍历所有参数的梯度分片
-                for name, param in self.critic.named_parameters():
+                for name, param in self.actor.named_parameters():
                     if param.grad is not None:
                         nan = torch.isnan(param.grad).sum().item()
                         inf = torch.isinf(param.grad).sum().item()
