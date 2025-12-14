@@ -9,7 +9,7 @@ def get_model_parallel_rank():
 
 
 def get_model_parallel_world_size():
-    return mpu.get_tensor_model_parallel_world_size() + mpu.get_pipeline_model_parallel_world_size()
+    return mpu.get_tensor_model_parallel_world_size() * mpu.get_pipeline_model_parallel_world_size()
 
 
 def add_missing_mpu_methods():

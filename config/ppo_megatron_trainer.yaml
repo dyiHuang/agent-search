@@ -68,6 +68,9 @@ deepspeed:
   # 日志与 checkpoint 配置
   steps_per_print: 10
   checkpoint:
+    writer:
+      type: fast
+      data_parallel: REPLICA
     use_node_local_storage: True
     path: ./checkpoints
 

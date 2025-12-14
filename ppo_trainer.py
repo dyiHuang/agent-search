@@ -1,5 +1,9 @@
 import os
 from typing import Dict
+
+from deepspeed.runtime.model_checkpointing import CheckpointWriterFactory, CHECKPOINT_WRITER
+from deepspeed.runtime.model_checkpointing.data_parallel_writer_factory import DataParallelWriterConfig
+
 from utils import rotary_pos_emb_patch
 
 rotary_pos_emb_patch.apply_patch()
@@ -100,9 +104,8 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 5. 初始化 Deepspeed 引擎（ZeRO 优化）
         self._init_deepspeed()
-        print(f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
-
-
+        print(
+            f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
 
     def _init_logger(self):
         from utils.tracking import Tracking
@@ -249,6 +252,15 @@ class MegatronDeepSpeedPPOTrainer:
             #     )
             print(
                 f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
+            if hasattr(self.critic, 'checkpoint_engine') and self.critic.checkpoint_engine is not None and self.critic._config is not None:
+                self.critic.checkpoint_engine._writer = CheckpointWriterFactory(
+                    writer_config=self.critic._config.checkpoint_config[CHECKPOINT_WRITER],
+                    aio_config=self.critic._config.aio_config,
+                    dp_writer_config=DataParallelWriterConfig(world_size=parallel_state.get_model_parallel_world_size(),
+                                                              rank=parallel_state.get_model_parallel_group().rank(),
+                                                              global_rank=torch.distributed.get_rank(),
+                                                              local_rank=parallel_state.get_model_parallel_group().rank(),
+                                                              pure_dp=True))
 
         actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
                                                  model_chunks=[self.actor])
@@ -259,7 +271,6 @@ class MegatronDeepSpeedPPOTrainer:
         # for group in actor_optimizer.optimizer.param_groups:
         #     for p in group["params"]:
         #         p.requires_grad = True  # 覆盖 Megatron 处理后的状态
-
 
         # 1. 过滤掉空的 param_groups
         #    创建一个新的列表来存放可训练参数非空的 groups
@@ -290,6 +301,15 @@ class MegatronDeepSpeedPPOTrainer:
         )
         print(
             f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
+        if hasattr(self.critic, 'checkpoint_engine') and self.actor.checkpoint_engine is not None and self.actor._config is not None:
+            self.actor.checkpoint_engine._writer = CheckpointWriterFactory(
+                writer_config=self.actor._config.checkpoint_config[CHECKPOINT_WRITER],
+                aio_config=self.actor._config.aio_config,
+                dp_writer_config=DataParallelWriterConfig(world_size=parallel_state.get_model_parallel_world_size(),
+                                                          rank=parallel_state.get_model_parallel_group().rank(),
+                                                          global_rank=torch.distributed.get_rank(),
+                                                          local_rank=parallel_state.get_model_parallel_group().rank(),
+                                                          pure_dp=True))
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
@@ -596,8 +616,9 @@ class MegatronDeepSpeedPPOTrainer:
             # 更新 critic 模型
             # self.critic.backward(critic_loss)
 
-        return metrics
+        torch.distributed.barrier()
 
+        return metrics
 
     @staticmethod
     def bf16_safe_clip_grad_norm(model):
@@ -627,14 +648,14 @@ class MegatronDeepSpeedPPOTrainer:
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
                 print(f"rollout successful:{self.global_steps}, "
-                                   f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                                   f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
+                      f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                      f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
                 print(f"rollout response_mask:{response_mask}"
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                                   f"response_mask.shape:{response_mask.shape}")
+                      f"response_mask.shape:{response_mask.shape}")
                 print(f"rollout response:{responses}"
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                                   f"response.shape:{responses.shape}")
+                      f"response.shape:{responses.shape}")
 
                 # continue
 
@@ -874,7 +895,8 @@ class MegatronDeepSpeedPPOTrainer:
                         grad_norm = param.grad.norm().item()
                         print(
                             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
-                print(f"dp_group_rank:{torch.distributed.get_group_rank(self.critic_optimizer.dp_process_group, torch.distributed.get_rank())}, group_size:{torch.distributed.get_world_size(self.critic_optimizer.dp_process_group)}")
+                print(
+                    f"dp_group_rank:{torch.distributed.get_group_rank(self.critic_optimizer.dp_process_group, torch.distributed.get_rank())}, group_size:{torch.distributed.get_world_size(self.critic_optimizer.dp_process_group)}")
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
@@ -882,6 +904,8 @@ class MegatronDeepSpeedPPOTrainer:
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
+
+        torch.distributed.barrier()
 
         return metrics
 
