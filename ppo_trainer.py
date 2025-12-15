@@ -301,7 +301,7 @@ class MegatronDeepSpeedPPOTrainer:
         )
         print(
             f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
-        if hasattr(self.critic, 'checkpoint_engine') and self.actor.checkpoint_engine is not None and self.actor._config is not None:
+        if hasattr(self.actor, 'checkpoint_engine') and self.actor.checkpoint_engine is not None and self.actor._config is not None:
             self.actor.checkpoint_engine._writer = CheckpointWriterFactory(
                 writer_config=self.actor._config.checkpoint_config[CHECKPOINT_WRITER],
                 aio_config=self.actor._config.aio_config,
@@ -691,27 +691,36 @@ class MegatronDeepSpeedPPOTrainer:
                 if self.global_steps % 100 == 0:
                     utils.print_rank_0(f'train metrics: {metrics}, global_steps: {self.global_steps}')
 
+                client_state = {  # 保存训练状态（可选）
+                    "step": self.global_steps,
+                    # "lr": lr_scheduler.get_last_lr()[0],
+                    "epoch": epoch
+                }
+
                 if self.global_steps % self.config.trainer.log_interval == 0:
                     # pprint(f'Final validation metrics: {val_metrics}')
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
-                    self.actor.save_checkpoint(checkpoint_path)
-                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
-                    self.critic.save_checkpoint(checkpoint_path)
+                    self.actor.save_checkpoint(checkpoint_path, client_state)
+                    if hasattr(self, 'critic_optimizer'):
+                        checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
+                        self.critic.save_checkpoint(checkpoint_path)
 
                 if self.global_steps >= self.total_training_steps:
                     # pprint(f'Final validation metrics: {val_metrics}')
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
                     self.actor.save_checkpoint(checkpoint_path)
-                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-                    self.critic.save_checkpoint(checkpoint_path)
+                    if hasattr(self, 'critic_optimizer'):
+                        checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+                        self.critic.save_checkpoint(checkpoint_path)
                     return
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
             self.actor.save_checkpoint(checkpoint_path)
-            checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-            self.critic.save_checkpoint(checkpoint_path)
+            if hasattr(self, 'critic_optimizer'):
+                checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+                self.critic.save_checkpoint(checkpoint_path)
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
