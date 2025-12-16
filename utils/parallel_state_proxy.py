@@ -11,7 +11,7 @@ def get_model_parallel_rank():
 
 
 def get_model_parallel_world_size():
-    return mpu.get_tensor_model_parallel_world_size()
+    return mpu.get_model_parallel_world_size()
 
 
 def get_model_parallel_src_rank():
