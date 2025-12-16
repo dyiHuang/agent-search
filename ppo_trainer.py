@@ -231,7 +231,7 @@ class MegatronDeepSpeedPPOTrainer:
                 f"parameters to"
                 f"optimize.")
             model_dummy = DummyParameterModule()
-            self.critic_dummy, _, _, _ = deepspeed.initialize(
+            self.critic_engine, _, _, _ = deepspeed.initialize(
                 model=model_dummy,
                 # optimizer=critic_optimizer.optimizer,
                 config=deepspeed_dict,
@@ -249,6 +249,7 @@ class MegatronDeepSpeedPPOTrainer:
                 mpu=parallel_state_proxy_critic,
                 # model_parameters=self.critic.parameters()
             )
+            self.critic_engine = self.critic
 
             # if parallel_state.is_pipeline_last_stage():
             #     self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
@@ -711,10 +712,7 @@ class MegatronDeepSpeedPPOTrainer:
                     checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
                     checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
-                    if hasattr(self, 'critic_optimizer'):
-                        self.critic.save_checkpoint(checkpoint_path, client_state)
-                    else:
-                        self.critic_dummy.save_checkpoint(checkpoint_path, client_state)
+                    self.critic_engine.save_checkpoint(checkpoint_path, client_state)
 
                 if self.global_steps >= self.total_training_steps:
                     break
@@ -723,10 +721,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.actor.save_checkpoint(checkpoint_path, client_state)
 
             checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-            if hasattr(self, 'critic_optimizer'):
-                self.critic.save_checkpoint(checkpoint_path, client_state)
-            else:
-                self.critic_dummy.save_checkpoint(checkpoint_path, client_state)
+            self.critic_engine.save_checkpoint(checkpoint_path, client_state)
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
