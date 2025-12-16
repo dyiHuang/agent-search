@@ -139,7 +139,7 @@ def get_data_parallel_world_size(with_context_parallel=False, partial_data_paral
 
 def get_data_parallel_group_ranks(with_context_parallel=False, partial_data_parallel=False):
     ws = mpu.get_data_parallel_world_size(with_context_parallel, partial_data_parallel)
-    return [i for i in ws]
+    return [i for i in range(ws)]
 
 
 def get_data_parallel_rank(with_context_parallel=False, partial_data_parallel=False):
