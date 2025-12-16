@@ -707,6 +707,7 @@ class MegatronDeepSpeedPPOTrainer:
                         self.critic.save_checkpoint(checkpoint_path, client_state)
                     else:
                         torch.distributed.barrier()
+                        torch.distributed.barrier()
 
                 if self.global_steps >= self.total_training_steps:
                     break
