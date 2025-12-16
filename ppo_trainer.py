@@ -652,6 +652,8 @@ class MegatronDeepSpeedPPOTrainer:
         checkpoint_path = f"./ds_checkpoints/actor/"
         _, client_state = self.actor.load_checkpoint(checkpoint_path)
 
+        print(f"client_state:{client_state}")
+
         checkpoint_path = f"./ds_checkpoints/critic/"
         _, _ = self.critic.load_checkpoint(checkpoint_path)
 
