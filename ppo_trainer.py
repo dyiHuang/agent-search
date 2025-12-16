@@ -141,7 +141,7 @@ class MegatronDeepSpeedPPOTrainer:
             init_method="env://"  # 从环境变量读取 master_addr/master_port（torchrun 传入）
         )
         os.environ[CROSS_RANK] = str(os.getenv("NODE_RANK", 0))
-        os.environ[CROSS_SIZE] = str(os.getenv("NNODES", 0))
+        os.environ[CROSS_SIZE] = str(os.getenv("TORCHRUN_NNODES", 0))
 
         # 获取 DeepSpeed 进程信息
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
