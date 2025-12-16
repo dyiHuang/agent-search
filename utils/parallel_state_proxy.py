@@ -35,6 +35,11 @@ def get_data_parallel_group(with_context_parallel=False, partial_data_parallel=F
     return mpu.get_data_parallel_group(with_context_parallel, partial_data_parallel)
 
 
+def get_data_parallel_group_ranks(with_context_parallel=False, partial_data_parallel=False):
+    ws = mpu.get_data_parallel_world_size(with_context_parallel, partial_data_parallel)
+    return [i for i in ws]
+
+
 def get_data_parallel_group_gloo(with_context_parallel=False, partial_data_parallel=False):
     """Get the Gloo data-parallel group the caller rank belongs to."""
     return mpu.get_data_parallel_group_gloo(with_context_parallel, partial_data_parallel)
