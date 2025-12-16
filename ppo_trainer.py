@@ -230,7 +230,14 @@ class MegatronDeepSpeedPPOTrainer:
                 f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
                 f"parameters to"
                 f"optimize.")
-            self.critic.step = lambda *args, **kwargs: None
+            self.critic, _, _, _ = deepspeed.initialize(
+                model=self.critic,
+                # optimizer=critic_optimizer.optimizer,
+                config=deepspeed_dict,
+                lr_scheduler=critic_opt_param_scheduler,
+                mpu=parallel_state_proxy_critic,
+                model_parameters=self.critic.parameters()
+            )
         else:
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
@@ -702,24 +709,18 @@ class MegatronDeepSpeedPPOTrainer:
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
-                    if hasattr(self, 'critic_optimizer'):
-                        checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
-                        self.critic.save_checkpoint(checkpoint_path, client_state)
-                    else:
-                        torch.distributed.barrier()
-                        torch.distributed.barrier()
+
+                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
+                    self.critic.save_checkpoint(checkpoint_path, client_state)
 
                 if self.global_steps >= self.total_training_steps:
                     break
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
             self.actor.save_checkpoint(checkpoint_path, client_state)
-            if hasattr(self, 'critic_optimizer'):
-                checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-                self.critic.save_checkpoint(checkpoint_path, client_state)
-            else:
-                torch.distributed.barrier()
-                torch.distributed.barrier()
+
+            checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+            self.critic.save_checkpoint(checkpoint_path, client_state)
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
