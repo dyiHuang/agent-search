@@ -38,7 +38,7 @@ def main(config):
     os.environ[CROSS_RANK] = str(args.node_rank)
     os.environ[CROSS_SIZE] = str(args.nnodes)
 
-    trainer = MegatronDeepSpeedPPOTrainer(args, config)
+    trainer = MegatronDeepSpeedPPOTrainer(config)
     trainer.train()
 
 
