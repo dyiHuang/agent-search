@@ -705,22 +705,19 @@ class MegatronDeepSpeedPPOTrainer:
                     if hasattr(self, 'critic_optimizer'):
                         checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
                         self.critic.save_checkpoint(checkpoint_path, client_state)
+                    else:
+                        torch.distributed.barrier()
 
                 if self.global_steps >= self.total_training_steps:
-                    # pprint(f'Final validation metrics: {val_metrics}')
-                    # 保存 checkpoint 到自定义路径
-                    checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
-                    self.actor.save_checkpoint(checkpoint_path, client_state)
-                    if hasattr(self, 'critic_optimizer'):
-                        checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-                        self.critic.save_checkpoint(checkpoint_path, client_state)
-                    return
+                    break
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
             self.actor.save_checkpoint(checkpoint_path, client_state)
             if hasattr(self, 'critic_optimizer'):
                 checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
                 self.critic.save_checkpoint(checkpoint_path, client_state)
+            else:
+                torch.distributed.barrier()
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
