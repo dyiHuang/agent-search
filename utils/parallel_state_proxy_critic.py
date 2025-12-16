@@ -7,7 +7,7 @@ def get_model_parallel_group(check_initialized=True):
 
 
 def get_model_parallel_rank():
-    return 0
+    return mpu.get_model_parallel_rank()
 
 
 def get_model_parallel_world_size():
