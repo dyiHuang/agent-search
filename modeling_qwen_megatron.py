@@ -2529,3 +2529,17 @@ def debug_generation_sampling(self, input_ids, num_steps=3):
         utils.print_rank_0(f"更新后输入长度: {current_input.shape[1]}")
 
     return current_input
+
+
+class DummyParameterModule(nn.Module):
+    """给无参数分区添加占位可训练参数的空模块"""
+
+    def __init__(self):
+        super().__init__()
+        # 核心：添加1个占位可训练参数（requires_grad=True）
+        # 尺寸设为1，避免占用内存
+        self.dummy_param = nn.Parameter(torch.tensor([0.0], dtype=torch.float32), requires_grad=True)
+
+    def forward(self, x):
+        # 无实际计算，直接返回输入（不影响业务逻辑）
+        return x

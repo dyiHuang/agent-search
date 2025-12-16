@@ -21,7 +21,7 @@ from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, model_par
 
 import core_algos
 from utils import utils, parallel_state_patch, parallel_state_proxy, parallel_state_proxy_critic
-from modeling_qwen_megatron import build_qwen2_megatron_model
+from modeling_qwen_megatron import build_qwen2_megatron_model, DummyParameterModule
 from omegaconf import OmegaConf, open_dict
 import reward_score
 from deepspeed.accelerator import get_accelerator
@@ -230,13 +230,14 @@ class MegatronDeepSpeedPPOTrainer:
                 f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
                 f"parameters to"
                 f"optimize.")
-            self.critic, _, _, _ = deepspeed.initialize(
-                model=self.critic,
+            model_dummy = DummyParameterModule()
+            self.critic_dummy, _, _, _ = deepspeed.initialize(
+                model=model_dummy,
                 # optimizer=critic_optimizer.optimizer,
                 config=deepspeed_dict,
-                lr_scheduler=critic_opt_param_scheduler,
+                # lr_scheduler=critic_opt_param_scheduler,
                 mpu=parallel_state_proxy_critic,
-                model_parameters=self.critic.parameters()
+                model_parameters=model_dummy.parameters()
             )
         else:
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
@@ -709,9 +710,11 @@ class MegatronDeepSpeedPPOTrainer:
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
-
                     checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
-                    self.critic.save_checkpoint(checkpoint_path, client_state)
+                    if hasattr(self, 'critic_optimizer'):
+                        self.critic.save_checkpoint(checkpoint_path, client_state)
+                    else:
+                        self.critic_dummy.save_checkpoint(checkpoint_path, client_state)
 
                 if self.global_steps >= self.total_training_steps:
                     break
@@ -720,7 +723,10 @@ class MegatronDeepSpeedPPOTrainer:
             self.actor.save_checkpoint(checkpoint_path, client_state)
 
             checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
-            self.critic.save_checkpoint(checkpoint_path, client_state)
+            if hasattr(self, 'critic_optimizer'):
+                self.critic.save_checkpoint(checkpoint_path, client_state)
+            else:
+                self.critic_dummy.save_checkpoint(checkpoint_path, client_state)
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
