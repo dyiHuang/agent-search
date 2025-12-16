@@ -225,7 +225,7 @@ class MegatronDeepSpeedPPOTrainer:
             if trainable > 0:
                 filtered_param_groups_critic.append(param_group)
         # 2. 验证过滤后是否还有参数组
-        if not filtered_param_groups_critic:
+        if not filtered_param_groups_critic or self.critic.value_head is None:
             print(
                 f"[Rank {torch.distributed.get_rank()}] All critic param_groups are empty after filtering. No "
                 f"parameters to"
