@@ -3,6 +3,7 @@ from typing import Dict
 
 from deepspeed.runtime.model_checkpointing import CheckpointWriterFactory, CHECKPOINT_WRITER
 from deepspeed.runtime.model_checkpointing.data_parallel_writer_factory import DataParallelWriterConfig
+from deepspeed.utils import groups
 
 from utils import rotary_pos_emb_patch
 
@@ -317,6 +318,9 @@ class MegatronDeepSpeedPPOTrainer:
                                                           global_rank=torch.distributed.get_rank(),
                                                           local_rank=parallel_state.get_model_parallel_group().rank(),
                                                           pure_dp=True))
+
+        self.actor.mp_world_size = groups._get_model_parallel_world_size()
+        self.critic.mp_world_size = groups._get_model_parallel_world_size()
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
