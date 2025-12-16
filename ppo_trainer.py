@@ -650,9 +650,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 保存 checkpoint 到自定义路径
         checkpoint_path = f"./ds_checkpoints/actor/"
-        load_path, client_state = self.actor.load_checkpoint(checkpoint_path)
-
-        print(f"load_path:{load_path}, client_state:{client_state}")
+        load_path, _ = self.actor.load_checkpoint(checkpoint_path)
 
         checkpoint_path = f"./ds_checkpoints/critic/"
         _, _ = self.critic.load_checkpoint(checkpoint_path)
@@ -660,6 +658,7 @@ class MegatronDeepSpeedPPOTrainer:
         epoch = 0
         self.global_steps = 0
         start_index = 0
+        client_state = utils.extract_step_epoch_from_ckpt_path(load_path)
         if client_state is not None and client_state['step'] > 0:
             epoch = client_state['epoch']
             self.global_steps = client_state['step']

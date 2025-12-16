@@ -1,3 +1,5 @@
+import ast
+import os
 from datetime import datetime
 from typing import Dict, Union
 
@@ -242,3 +244,46 @@ def get_model_parallel_device():
     local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     return device
+
+
+def extract_step_epoch_from_ckpt_path(ckpt_path):
+    """
+    从DeepSpeed checkpoint路径中提取step和epoch值
+    Args:
+        ckpt_path: str，完整的checkpoint文件路径（如./ds_checkpoints/actor/{'step': 5, 'epoch': 0}/mp_rank_03_model_states.pt）
+    Returns:
+        dict: 包含step和epoch的字典，格式{"step": int, "epoch": int}
+    """
+    # 步骤1：规范化路径（处理/、//等分隔符，兼容不同系统）
+    normalized_path = os.path.normpath(ckpt_path)
+    # 步骤2：分割路径为各个组成部分（如['.', 'ds_checkpoints', 'actor', "{'step': 5, 'epoch': 0}", 'mp_rank_03_model_states.pt']）
+    path_parts = normalized_path.split(os.sep)
+
+    # 步骤3：找到包含{step, epoch}的目录名（特征：包含{}且有step/epoch关键字）
+    target_part = None
+    for part in path_parts:
+        if '{' in part and '}' in part and 'step' in part and 'epoch' in part:
+            target_part = part
+            break
+
+    # 异常处理：未找到目标目录名
+    if target_part is None:
+        raise ValueError(f"路径{ckpt_path}中未找到包含step/epoch的目录名（格式如{{'step': x, 'epoch': y}}）")
+
+    # 步骤4：解析字典格式的字符串（ast.literal_eval安全解析Python字面量，避免eval的安全风险）
+    try:
+        # 替换可能的格式问题（如空格、单双引号），保证解析成功
+        target_str = target_part.strip().replace(' ', '')  # 去除空格（如{'step':5,'epoch':0}）
+        ckpt_dict = ast.literal_eval(target_str)  # 解析为Python字典
+    except (SyntaxError, ValueError) as e:
+        raise RuntimeError(f"解析目录名{target_part}失败，错误：{e}") from e
+
+    # 步骤5：提取step和epoch（加默认值，避免KeyError）
+    step = ckpt_dict.get('step', 0)
+    epoch = ckpt_dict.get('epoch', 0)
+
+    # 验证类型（确保是整数）
+    if not isinstance(step, int) or not isinstance(epoch, int):
+        raise TypeError(f"step/epoch必须是整数，当前step={step}(类型{type(step)}), epoch={epoch}(类型{type(epoch)})")
+
+    return {"step": step, "epoch": epoch}
