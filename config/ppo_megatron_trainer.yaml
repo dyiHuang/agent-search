@@ -69,7 +69,7 @@ deepspeed:
   steps_per_print: 10
   checkpoint:
     writer:
-      type: fast
+      type: python
       data_parallel: REPLICA
     use_node_local_storage: True
     path: ./checkpoints
