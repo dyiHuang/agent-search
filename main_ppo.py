@@ -19,7 +19,7 @@ def parse_args():
 
     parser.add_argument("--nnodes",
                         type=int,
-                        default=0,
+                        default=1,
                         help="The nums of the node for multi-node distributed "
                              "training")
 
