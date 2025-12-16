@@ -641,12 +641,41 @@ class MegatronDeepSpeedPPOTrainer:
     def train(self):
         """PPO 训练主循环"""
         self.actor.train()
-        # self.critic.train()
+        self.critic.train()
         self.global_steps = 0
 
+        # 保存 checkpoint 到自定义路径
+        checkpoint_path = f"./ds_checkpoints/actor/"
+        _, client_state = self.actor.load_checkpoint(checkpoint_path)
+
+        checkpoint_path = f"./ds_checkpoints/critic/"
+        _, _ = self.critic.load_checkpoint(checkpoint_path)
+
+        epoch = 0
+        self.global_steps = 0
+        start_index = 0
+        if client_state is not None and client_state['step'] > 0:
+            epoch = client_state['epoch']
+            self.global_steps = client_state['step']
+            self.train_dataloader.sampler.set_epoch(epoch)
+            start_index = self.global_steps % len(self.train_dataloader)
+
         metrics = {}
-        for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader:
+        for epoch in range(epoch, self.config.trainer.total_epochs):
+            # --------------------------
+            # 构建dataloader迭代器，并跳过已处理的batch
+            # --------------------------
+            dataloader_iter = iter(self.train_dataloader)
+            # 跳过start_index个batch（续训核心）
+            if start_index > 0:
+                for _ in range(start_index):
+                    try:
+                        next(dataloader_iter)
+                    except StopIteration:
+                        # 极端情况：索引越界，重置迭代器
+                        dataloader_iter = iter(self.train_dataloader)
+                        break
+            for batch_dict in dataloader_iter:
 
                 # self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
                 #
@@ -707,18 +736,18 @@ class MegatronDeepSpeedPPOTrainer:
                 if self.global_steps % self.config.trainer.log_interval == 0:
                     # pprint(f'Final validation metrics: {val_metrics}')
                     # 保存 checkpoint 到自定义路径
-                    checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}/global_steps_{self.global_steps}"
+                    checkpoint_path = f"./ds_checkpoints/actor/"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
-                    checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}/global_steps_{self.global_steps}"
+                    checkpoint_path = f"./ds_checkpoints/critic/"
                     self.critic.save_checkpoint(checkpoint_path, client_state)
 
                 if self.global_steps >= self.total_training_steps:
                     break
             # 保存 checkpoint 到自定义路径
-            checkpoint_path = f"./ds_checkpoints/actor/epoch_{epoch}"
+            checkpoint_path = f"./ds_checkpoints/actor/"
             self.actor.save_checkpoint(checkpoint_path, client_state)
 
-            checkpoint_path = f"./ds_checkpoints/critic/epoch_{epoch}"
+            checkpoint_path = f"./ds_checkpoints/critic/"
             self.critic.save_checkpoint(checkpoint_path, client_state)
 
     def write_ds_scalars(self, metrics):
