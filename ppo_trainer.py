@@ -650,9 +650,9 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 保存 checkpoint 到自定义路径
         checkpoint_path = f"./ds_checkpoints/actor/"
-        _, client_state = self.actor.load_checkpoint(checkpoint_path)
+        load_path, client_state = self.actor.load_checkpoint(checkpoint_path)
 
-        print(f"client_state:{client_state}")
+        print(f"load_path:{load_path}, client_state:{client_state}")
 
         checkpoint_path = f"./ds_checkpoints/critic/"
         _, _ = self.critic.load_checkpoint(checkpoint_path)
