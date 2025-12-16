@@ -718,6 +718,7 @@ class MegatronDeepSpeedPPOTrainer:
                 self.critic.save_checkpoint(checkpoint_path, client_state)
             else:
                 torch.distributed.barrier()
+                torch.distributed.barrier()
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
