@@ -660,6 +660,17 @@ class MegatronDeepSpeedPPOTrainer:
         start_index = 0
         client_state = utils.extract_step_epoch_from_ckpt_path(load_path)
         if client_state is not None and client_state['step'] > 0:
+            if self.critic.value_head is not None:
+                for name, param in self.critic.value_head.named_parameters():
+                    print(
+                        f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+
+            for idx, layer in enumerate(self.actor.layers):
+                if idx > 2:
+                    break
+                for name, param in layer.named_parameters():
+                    print(
+                        f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
             epoch = client_state['epoch']
             self.global_steps = client_state['step']
             self.train_dataloader.sampler.set_epoch(epoch)
@@ -740,6 +751,17 @@ class MegatronDeepSpeedPPOTrainer:
 
                 if self.global_steps % self.config.trainer.log_interval == 0:
                     # pprint(f'Final validation metrics: {val_metrics}')
+                    if self.critic.value_head is not None:
+                        for name, param in self.critic.value_head.named_parameters():
+                            print(f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+
+                    for idx, layer in enumerate(self.actor.layers):
+                        if idx > 2:
+                            break
+                        for name, param in layer.named_parameters():
+                            print(f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+
+
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
