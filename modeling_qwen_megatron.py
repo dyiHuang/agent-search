@@ -816,9 +816,9 @@ class Qwen2MegatronModel(MegatronModule):
             batch_size = hidden_states.size(0)
         else:
             # self.hidden_states should be passed by Megatron
-            print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                  f"self.input_tensor len:{len(self.input_tensor)}, "
-                  f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
+            # print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+            #       f"self.input_tensor len:{len(self.input_tensor)}, "
+            #       f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
             if isinstance(self.input_tensor, list):
                 hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
             else:
@@ -845,12 +845,13 @@ class Qwen2MegatronModel(MegatronModule):
         causal_mask_mapping = self.create_mask_mapping(attention_mask, cache_position, batch_size, dtype,
                                                        inference_context, seq_len)
 
-        utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(input_ids[0])}")
+        # utils.print_rank_0(f"batch_dict['input_ids'][0]:{self.tokenizer.decode(input_ids[0])}")
         if causal_mask_mapping is not None and causal_mask_mapping['full_attention'] is not None:
-            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping['full_attention'][0]}")
-            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping.shape={causal_mask_mapping['full_attention'][0].shape}")
-            utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping sum={torch.sum(causal_mask_mapping['full_attention'][0][-1])}")
-        utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
+            pass
+            # utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping={causal_mask_mapping['full_attention'][0]}")
+            # utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping.shape={causal_mask_mapping['full_attention'][0].shape}")
+            # utils.print_rank_0(f"Qwen2MegatronModel forward causal_mask_mapping sum={torch.sum(causal_mask_mapping['full_attention'][0][-1])}")
+        # utils.print_rank_0(f"Qwen2MegatronModel forward seq_len={seq_len}")
         # position_ids = torch.arange(0, seq_len, device=hidden_states.device).unsqueeze(0)
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)  # [1, s, h]
@@ -1002,10 +1003,10 @@ class Qwen2MegatronModel(MegatronModule):
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # 确保正确聚合所有micro batch的logits
                 if isinstance(logits, list):
-                    utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
+                    # utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
                     logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
                 logits = logits.to(torch.float32)
-                utils.print_rank_0(f"logits shape={logits.shape}")
+                # utils.print_rank_0(f"logits shape={logits.shape}")
             else:
                 logits = torch.empty(size=(batch_size, 1, self.vocab_size),
                                      dtype=torch.float32,
@@ -1033,7 +1034,7 @@ class Qwen2MegatronModel(MegatronModule):
             next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
             next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
 
-            utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
+            # utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
             # f. 处理停止条件：标记已生成eos的样本
             finished_mask = finished_mask | (next_token.squeeze(1) == eos_token_id)
@@ -1102,11 +1103,11 @@ class Qwen2MegatronModel(MegatronModule):
             ref_log_probs = data['ref_log_probs']
             advantages = data['advantages']
 
-            print(f"rank:{torch.distributed.get_rank()} output NaN: {torch.isnan(output).sum().item()}, Inf: {torch.isinf(output).sum().item()}")
-            print(f"rank:{torch.distributed.get_rank()} advantages NaN: {torch.isnan(advantages).sum().item()}, Inf: {torch.isinf(advantages).sum().item()}")
-            print(f"rank:{torch.distributed.get_rank()} response_mask NaN: {torch.isnan(response_mask).sum().item()}, Inf: {torch.isinf(response_mask).sum().item()}")
-            print(f"rank:{torch.distributed.get_rank()} responses NaN: {torch.isnan(responses).sum().item()}, Inf: {torch.isinf(responses).sum().item()}")
-            print(f"rank:{torch.distributed.get_rank()} ref_log_probs NaN: {torch.isnan(ref_log_probs).sum().item()}, Inf: {torch.isinf(ref_log_probs).sum().item()}")
+            # print(f"rank:{torch.distributed.get_rank()} output NaN: {torch.isnan(output).sum().item()}, Inf: {torch.isinf(output).sum().item()}")
+            # print(f"rank:{torch.distributed.get_rank()} advantages NaN: {torch.isnan(advantages).sum().item()}, Inf: {torch.isinf(advantages).sum().item()}")
+            # print(f"rank:{torch.distributed.get_rank()} response_mask NaN: {torch.isnan(response_mask).sum().item()}, Inf: {torch.isinf(response_mask).sum().item()}")
+            # print(f"rank:{torch.distributed.get_rank()} responses NaN: {torch.isnan(responses).sum().item()}, Inf: {torch.isinf(responses).sum().item()}")
+            # print(f"rank:{torch.distributed.get_rank()} ref_log_probs NaN: {torch.isnan(ref_log_probs).sum().item()}, Inf: {torch.isinf(ref_log_probs).sum().item()}")
 
             clip_ratio = 0.2
             entropy_coeff = 0.1
@@ -1118,8 +1119,8 @@ class Qwen2MegatronModel(MegatronModule):
             logits = output
             logits = logits[:, -response_length - 1:-1].contiguous()
             log_prob = vocab_parallel_log_probs_from_logits(logits, responses)
-            print(
-                f"rank:{torch.distributed.get_rank()} log_prob NaN: {torch.isnan(log_prob).sum().item()}, Inf: {torch.isinf(log_prob).sum().item()}")
+            # print(
+            #     f"rank:{torch.distributed.get_rank()} log_prob NaN: {torch.isnan(log_prob).sum().item()}, Inf: {torch.isinf(log_prob).sum().item()}")
             pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=ref_log_probs,
                                                                           log_prob=log_prob,
                                                                           advantages=advantages,
@@ -1134,8 +1135,8 @@ class Qwen2MegatronModel(MegatronModule):
                 'actor/pg_clipfrac': pg_clipfrac.detach().item(),
                 'actor/ppo_kl': ppo_kl.detach().item()
             }
-            print(f"rank:{torch.distributed.get_rank()} policy_loss: {policy_loss.item()}")
-            print(f"rank:{torch.distributed.get_rank()} stats: {stats}")
+            # print(f"rank:{torch.distributed.get_rank()} policy_loss: {policy_loss.item()}")
+            # print(f"rank:{torch.distributed.get_rank()} stats: {stats}")
             return policy_loss, stats
 
         def forward_step(batch_iter, model):
@@ -1829,9 +1830,9 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
         else:
             # self.hidden_states should be passed by Megatron
-            print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                  f"self.input_tensor len:{len(self.input_tensor)}, "
-                  f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
+            # print(f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+            #       f"self.input_tensor len:{len(self.input_tensor)}, "
+            #       f"self.input_tensor0.shape: {self.input_tensor[0].shape}")
             if isinstance(self.input_tensor, list):
                 hidden_states = torch.cat(self.input_tensor, dim=1)  # [s, b, h]
             else:

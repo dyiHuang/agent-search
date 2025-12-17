@@ -468,7 +468,7 @@ class MegatronDeepSpeedPPOTrainer:
                 outputs = final_gen_batch_output[0]['input_ids']
                 response = outputs[:, prompt_len:]
 
-        print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
+        # print(f"outputs dtype: {outputs.dtype}, mask dtype: {mask.dtype}")
         response_mask = self._get_eos_mask(response_id=response,
                                            eos_token=self.tokenizer.eos_token_id,
                                            dtype=attention_mask.dtype)
@@ -574,8 +574,8 @@ class MegatronDeepSpeedPPOTrainer:
 
             increment = data.batch_size[0]
 
-            print(
-                f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
+            # print(
+            #     f"当前进程 {torch.distributed.get_rank()}-self.optimizer.averaged_gradients的keys：{list(self.optimizer.averaged_gradients.keys())}")
             # # 强制检查Actor参数梯度
             # has_grad = False
             # for name, param in self.actor.named_parameters():
@@ -586,20 +586,20 @@ class MegatronDeepSpeedPPOTrainer:
 
             self.bf16_safe_clip_grad_norm(self.actor)
 
-            if torch.distributed.get_rank() in [0, 1, 2, 3]:  # 仅关注rank2/3
-                print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
-                grad_nan_count = 0
-                grad_inf_count = 0
-                # 遍历所有参数的梯度分片
-                for name, param in self.actor.named_parameters():
-                    if param.grad is not None:
-                        nan = torch.isnan(param.grad).sum().item()
-                        inf = torch.isinf(param.grad).sum().item()
-                        grad_nan_count += nan
-                        grad_inf_count += inf
-                        if nan > 0 or inf > 0:
-                            print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
-                print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
+            # if torch.distributed.get_rank() in [0, 1, 2, 3]:  # 仅关注rank2/3
+            #     print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
+            #     grad_nan_count = 0
+            #     grad_inf_count = 0
+            #     # 遍历所有参数的梯度分片
+            #     for name, param in self.actor.named_parameters():
+            #         if param.grad is not None:
+            #             nan = torch.isnan(param.grad).sum().item()
+            #             inf = torch.isinf(param.grad).sum().item()
+            #             grad_nan_count += nan
+            #             grad_inf_count += inf
+            #             if nan > 0 or inf > 0:
+            #                 print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
+            #     print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
 
             self.actor.allreduce_gradients()
 
@@ -702,12 +702,12 @@ class MegatronDeepSpeedPPOTrainer:
                 print(f"rollout successful:{self.global_steps}, "
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                       f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
-                print(f"rollout response_mask:{response_mask}"
-                      f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                      f"response_mask.shape:{response_mask.shape}")
-                print(f"rollout response:{responses}"
-                      f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                      f"response.shape:{responses.shape}")
+                # print(f"rollout response_mask:{response_mask}"
+                #       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                #       f"response_mask.shape:{response_mask.shape}")
+                # print(f"rollout response:{responses}"
+                #       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
+                #       f"response.shape:{responses.shape}")
 
                 # continue
 
@@ -874,7 +874,7 @@ class MegatronDeepSpeedPPOTrainer:
                 # only on last rank. It should be on every tp rank
                 log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
                 log_probs = log_probs.to(torch.float32)
-                print(f"ref log_probs.shape={log_probs.shape}")
+                # print(f"ref log_probs.shape={log_probs.shape}")
             else:
                 log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1]),
                                         dtype=torch.float32,
@@ -918,49 +918,39 @@ class MegatronDeepSpeedPPOTrainer:
             increment = data.batch_size[0]
 
             if hasattr(self, 'critic_optimizer') and self.critic_optimizer is not None:
-                print(
-                    f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
+                # print(
+                #     f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 # 强制打印value_head参数的梯度（bfloat16下需注意精度）
-                for name, param in self.critic.value_head.named_parameters():
-                    if param.grad is None:
-                        print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
-                    else:
-                        param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
-                        grad_norm = param.grad.norm().item()
-                        print(
-                            f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+                # for name, param in self.critic.value_head.named_parameters():
+                #     if param.grad is None:
+                #         print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
+                #     else:
+                #         param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
+                #         grad_norm = param.grad.norm().item()
+                #         print(
+                #             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
-                if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
-                    print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
-                    grad_nan_count = 0
-                    grad_inf_count = 0
-                    # 遍历所有参数的梯度分片
-                    for name, param in self.critic.named_parameters():
-                        if param.grad is not None:
-                            nan = torch.isnan(param.grad).sum().item()
-                            inf = torch.isinf(param.grad).sum().item()
-                            grad_nan_count += nan
-                            grad_inf_count += inf
-                            if nan > 0 or inf > 0:
-                                print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
-                    print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
+                # if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
+                #     print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
+                #     grad_nan_count = 0
+                #     grad_inf_count = 0
+                #     # 遍历所有参数的梯度分片
+                #     for name, param in self.critic.named_parameters():
+                #         if param.grad is not None:
+                #             nan = torch.isnan(param.grad).sum().item()
+                #             inf = torch.isinf(param.grad).sum().item()
+                #             grad_nan_count += nan
+                #             grad_inf_count += inf
+                #             if nan > 0 or inf > 0:
+                #                 print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
+                #     print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
 
                 # self.critic_value_head.allreduce_gradients()
                 # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
                 self.critic.allreduce_gradients()
-                print(
-                    f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
-                # 强制打印value_head参数的梯度（bfloat16下需注意精度）
-                for name, param in self.critic.value_head.named_parameters():
-                    if param.grad is None:
-                        print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
-                    else:
-                        grad_norm = param.grad.norm().item()
-                        print(
-                            f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
-                print(
-                    f"dp_group_rank:{torch.distributed.get_group_rank(self.critic_optimizer.dp_process_group, torch.distributed.get_rank())}, group_size:{torch.distributed.get_world_size(self.critic_optimizer.dp_process_group)}")
+                # print(
+                    # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
