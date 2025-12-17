@@ -684,7 +684,7 @@ class MegatronDeepSpeedPPOTrainer:
             dataloader_iter = iter(self.train_dataloader)
             # 跳过start_index个batch（续训核心）
             if start_index > 0:
-                for _ in range(start_index):
+                for _ in range(start_index-1):
                     try:
                         next(dataloader_iter)
                     except StopIteration:
