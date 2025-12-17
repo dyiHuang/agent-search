@@ -1031,8 +1031,10 @@ class Qwen2MegatronModel(MegatronModule):
 
             # utils.print_rank_0(f"after top_k, logits shape : {logits.shape}")
             # e. 采样得到下一个token（greedy或随机采样）
-            next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
-            next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
+            # next_token_log_probs = torch.softmax(logits, dim=-1)  # [batch_size, 1, vocab_size]
+            # next_token = torch.multinomial(next_token_log_probs, num_samples=1)  # [batch_size, 1]
+            # 贪心搜索
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)  # [batch_size, 1]
 
             # utils.print_rank_0(f"next_token={next_token}, shape={next_token.shape}")
 
