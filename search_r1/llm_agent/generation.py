@@ -49,6 +49,7 @@ class LLMGenerationManager:
         self.config = config
         self.g_config = g_config
         self.is_validation = is_validation
+        self.micro_batch_size = g_config.actor.ppo_micro_batch_size
 
         self.tensor_fn = TensorHelper(TensorConfig(
             pad_token_id=tokenizer.pad_token_id,
@@ -185,17 +186,16 @@ class LLMGenerationManager:
 
         return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
 
-    def _generate_with_gpu_padding(self, active_batch: Dict) -> Dict:
+    def _generate_with_batch_size_padding(self, active_batch: Dict) -> Dict:
         """
             Wrapper for generation that handles multi-GPU padding requirements.
-            if num_gpus <= 1, return self.actor_rollout_wg.generate_sequences(active_batch)
+            if self.micro_batch_size <= 1, return self.actor_rollout_wg.generate_sequences(active_batch)
             if active_batch size is not divisible by num_gpus, pad with first sequence
             then remove padding from output
         """
-        num_gpus = self.config.num_gpus
         prompt_len = active_batch["input_ids"].shape[1]
         print(f"active_batch[attention_mask]={active_batch["attention_mask"]}")
-        if num_gpus <= 1:
+        if self.micro_batch_size <= 1:
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token + prompt_len,
@@ -212,7 +212,7 @@ class LLMGenerationManager:
             }
 
         batch_size = active_batch['input_ids'].shape[0]
-        remainder = batch_size % num_gpus
+        remainder = batch_size % self.micro_batch_size
 
         for key in active_batch.keys():
             if isinstance(active_batch[key], torch.Tensor):
@@ -234,7 +234,7 @@ class LLMGenerationManager:
             }
 
         # Add padding sequences
-        padding_size = num_gpus - remainder
+        padding_size = self.micro_batch_size - remainder
         padded_active_batch = {}
 
         for k, v in active_batch.items():
@@ -306,7 +306,7 @@ class LLMGenerationManager:
             rollings_active = {
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
-            gen_output = self._generate_with_gpu_padding(rollings_active)
+            gen_output = self._generate_with_batch_size_padding(rollings_active)
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
@@ -355,7 +355,7 @@ class LLMGenerationManager:
             rollings_active = {
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
-            gen_output = self._generate_with_gpu_padding(rollings_active)
+            gen_output = self._generate_with_batch_size_padding(rollings_active)
 
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
