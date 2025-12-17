@@ -254,6 +254,9 @@ def extract_step_epoch_from_ckpt_path(ckpt_path):
     Returns:
         dict: 包含step和epoch的字典，格式{"step": int, "epoch": int}
     """
+    if ckpt_path is None or ckpt_path == "":
+        return None
+
     # 步骤1：规范化路径（处理/、//等分隔符，兼容不同系统）
     normalized_path = os.path.normpath(ckpt_path)
     # 步骤2：分割路径为各个组成部分（如['.', 'ds_checkpoints', 'actor', "{'step': 5, 'epoch': 0}", 'mp_rank_03_model_states.pt']）
@@ -268,8 +271,7 @@ def extract_step_epoch_from_ckpt_path(ckpt_path):
 
     # 异常处理：未找到目标目录名
     if target_part is None:
-        print(f"路径{ckpt_path}中未找到包含step/epoch的目录名（格式如{{'step': x, 'epoch': y}}）")
-        return None
+        raise ValueError(f"路径{ckpt_path}中未找到包含step/epoch的目录名（格式如{{'step': x, 'epoch': y}}）")
 
     # 步骤4：解析字典格式的字符串（ast.literal_eval安全解析Python字面量，避免eval的安全风险）
     try:
@@ -277,8 +279,7 @@ def extract_step_epoch_from_ckpt_path(ckpt_path):
         target_str = target_part.strip().replace(' ', '')  # 去除空格（如{'step':5,'epoch':0}）
         ckpt_dict = ast.literal_eval(target_str)  # 解析为Python字典
     except (SyntaxError, ValueError) as e:
-        print(f"解析目录名{target_part}失败，错误：{e}")
-        return None
+        raise RuntimeError(f"解析目录名{target_part}失败，错误：{e}") from e
 
     # 步骤5：提取step和epoch（加默认值，避免KeyError）
     step = ckpt_dict.get('step', 0)
@@ -286,7 +287,6 @@ def extract_step_epoch_from_ckpt_path(ckpt_path):
 
     # 验证类型（确保是整数）
     if not isinstance(step, int) or not isinstance(epoch, int):
-        print(f"step/epoch必须是整数，当前step={step}(类型{type(step)}), epoch={epoch}(类型{type(epoch)})")
-        return None
+        raise TypeError(f"step/epoch必须是整数，当前step={step}(类型{type(step)}), epoch={epoch}(类型{type(epoch)})")
 
     return {"step": step, "epoch": epoch}
