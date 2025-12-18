@@ -36,9 +36,29 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from search_r1.llm_agent.generation import LLMGenerationManager, GenerationConfig
 
 from torch.utils.tensorboard import SummaryWriter
+import multiprocessing as mp
+from vllm import LLM, SamplingParams
 
 # 初始化 Writer（指定日志目录）
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
+
+# 定义vLLM初始化子进程函数
+def init_vllm_worker(queue, qwen_model_path):
+    llm = LLM(
+        model=qwen_model_path,
+        # tokenizer=tokenizer,
+        # model_hf_config=qwen_config,
+        tensor_parallel_size=4,  # 张量并行卡数
+        dtype=torch.bfloat16,
+        # 新增显存优化参数
+        gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
+        enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
+        skip_tokenizer_init=False,
+        # max_num_batched_tokens=4096  # 批处理优化
+        trust_remote_code=True,  # 必设为True！原False是核心问题
+        enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
+    )
+    queue.put(llm)  # 将vLLM实例传入主进程（若需后续调用）
 
 
 class MegatronDeepSpeedPPOTrainer:
@@ -52,6 +72,31 @@ class MegatronDeepSpeedPPOTrainer:
                                                        )
         # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        llm = None
+        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+            mp.set_start_method("fork", force=True)  # 强制fork，避免spawn
+            queue = mp.Queue()
+            vllm_process = mp.Process(target=init_vllm_worker, args=(queue, config.qwen_model_path, ))
+            vllm_process.start()
+            llm = queue.get()  # 获取vLLM实例
+            vllm_process.join()
+            self.llm = llm
+            # # 初始化分布式LLM（4卡TP）
+            # llm = LLM(
+            #     model=qwen_model_path,
+            #     # tokenizer=tokenizer,
+            #     # model_hf_config=qwen_config,
+            #     tensor_parallel_size=4,  # 张量并行卡数
+            #     dtype=megatron_config.params_dtype,
+            #     # 新增显存优化参数
+            #     gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
+            #     enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
+            #     skip_tokenizer_init=False,
+            #     # max_num_batched_tokens=4096  # 批处理优化
+            #     trust_remote_code=True,  # 必设为True！原False是核心问题
+            #     enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
+            # )
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
@@ -89,7 +134,6 @@ class MegatronDeepSpeedPPOTrainer:
 
         self.reference, llm = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                     qwen_model_path=config.qwen_model_path)
-        self.llm = llm
         self.reference.eval()
         utils.print_rank_0(self.reference)
         for name, param in self.reference.named_parameters():
