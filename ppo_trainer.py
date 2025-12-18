@@ -563,7 +563,9 @@ class MegatronDeepSpeedPPOTrainer:
                                          epochs=self.config.actor.ppo_epochs,
                                          dataloader_kwargs={'shuffle': self.config.actor.shuffle})
         metrics = {}
+        temp = self.actor.micro_batch_size
         for data in dataloader:
+            self.actor.micro_batch_size = data.batch_size[0]
             # 模型前向传播
             metric_micro_batch = self.actor.forward_backward_batch(
                 batch=data,
@@ -628,6 +630,7 @@ class MegatronDeepSpeedPPOTrainer:
             # self.critic.backward(critic_loss)
 
         torch.distributed.barrier()
+        self.actor.micro_batch_size = temp
 
         return metrics
 
@@ -912,7 +915,9 @@ class MegatronDeepSpeedPPOTrainer:
                                          epochs=self.config.critic.ppo_epochs,
                                          dataloader_kwargs={'shuffle': self.config.critic.shuffle})
         metrics = {}
+        temp = self.critic.micro_batch_size
         for data in dataloader:
+            self.critic.micro_batch_size = data.batch_size[0]
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
 
             increment = data.batch_size[0]
@@ -960,6 +965,7 @@ class MegatronDeepSpeedPPOTrainer:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
 
         torch.distributed.barrier()
+        self.critic.micro_batch_size = temp
 
         return metrics
 
