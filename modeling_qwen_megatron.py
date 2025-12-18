@@ -2058,9 +2058,13 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
                 # model_hf_config=qwen_config,
                 tensor_parallel_size=4,  # 张量并行卡数
                 dtype=megatron_config.params_dtype,
-                gpu_memory_utilization=0.9,
+                # 新增显存优化参数
+                gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
+                enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
                 skip_tokenizer_init=False,
                 # max_num_batched_tokens=4096  # 批处理优化
+                trust_remote_code=True,  # 必设为True！原False是核心问题
+                enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
             )
     elif is_actor:
         model = Qwen2MegatronActor(config, hf_model.config, megatron_config)
