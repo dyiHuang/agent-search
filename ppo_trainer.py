@@ -918,6 +918,7 @@ class MegatronDeepSpeedPPOTrainer:
         temp = self.critic.micro_batch_size
         for data in dataloader:
             self.critic.micro_batch_size = data.batch_size[0]
+            print(f"micro_batch_size:{self.critic.micro_batch_size}")
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
 
             increment = data.batch_size[0]
