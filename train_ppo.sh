@@ -1,5 +1,5 @@
 #export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,0,1,1,2,2,3,3
 export ARK_API_KEY=    # for doubao api
 
 GPUS_PER_NODE=8
