@@ -921,14 +921,14 @@ class MegatronDeepSpeedPPOTrainer:
                 # print(
                 #     f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 # 强制打印value_head参数的梯度（bfloat16下需注意精度）
-                # for name, param in self.critic.value_head.named_parameters():
-                #     if param.grad is None:
-                #         print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
-                #     else:
-                #         param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
-                #         grad_norm = param.grad.norm().item()
-                #         print(
-                #             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+                for name, param in self.critic.value_head.named_parameters():
+                    if param.grad is None:
+                        print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
+                    else:
+                        param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
+                        grad_norm = param.grad.norm().item()
+                        print(
+                            f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
                 # if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
                 #     print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
