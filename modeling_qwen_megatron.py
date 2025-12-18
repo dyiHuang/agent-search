@@ -1958,7 +1958,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                                    only_last_token=only_last_token, inference_context=inference_context)
             if inference_context is not None:
                 inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
-            return output, partial(loss_func, data=batch)
+            return output, partial(loss_func, data=micro_batch)
 
         # batch should be a list of batches inside micro-batches
         batch_generator = self.make_batch_generator(batches, vpp_size=1)
