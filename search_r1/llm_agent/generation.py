@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import torch
 import re
@@ -218,6 +219,7 @@ class LLMGenerationManager:
             if isinstance(active_batch[key], torch.Tensor):
                 active_batch[key] = active_batch[key].long()
         if remainder == 0:
+            start_time = time.time()
             output = self.actor.generate(
                 input_ids=active_batch["input_ids"].to('cuda'),
                 max_length=self.g_config.rollout.max_new_token + prompt_len,
@@ -228,6 +230,8 @@ class LLMGenerationManager:
                 top_k=self.g_config.rollout.top_k,
             )
             output = output.to('cpu')
+            end_time = time.time()
+            print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
             return {
                 "input_ids": output,
                 "responses": output[:, prompt_len:],
