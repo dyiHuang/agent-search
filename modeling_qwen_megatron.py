@@ -2053,7 +2053,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
             # 初始化分布式LLM（4卡TP）
             llm = LLM(
-                model=hf_model,
+                model=qwen_model_path,
                 tokenizer=tokenizer,
                 # model_hf_config=qwen_config,
                 tensor_parallel_size=4,  # 张量并行卡数
