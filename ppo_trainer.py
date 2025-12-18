@@ -132,7 +132,7 @@ class MegatronDeepSpeedPPOTrainer:
         tp_size = self.config.megatron.tensor_model_parallel_size
         pp_size = self.config.megatron.pipeline_model_parallel_size
         dp_size = world_size // (tp_size * pp_size)
-        assert tp_size * pp_size * dp_size == world_size, "并行度不匹配：TP*PP*DP != WORLD_SIZE"
+        assert tp_size * pp_size * dp_size == world_size, f"world_size:{world_size}, dp_size:{dp_size}并行度不匹配：TP*PP*DP != WORLD_SIZE"
 
         # -------------------------- 步骤 2：DeepSpeed 分布式初始化 --------------------------
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
