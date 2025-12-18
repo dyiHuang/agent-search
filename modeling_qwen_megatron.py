@@ -37,6 +37,7 @@ import core_algos
 import qwen_load
 from tensordict import TensorDict
 from vllm import LLM, SamplingParams
+import multiprocessing as mp
 
 from megatron.core.utils import (
     deprecate_inference_params,
@@ -2051,21 +2052,27 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
                                                    megatron_config.params_dtype)
         if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
-            # 初始化分布式LLM（4卡TP）
-            llm = LLM(
-                model=qwen_model_path,
-                # tokenizer=tokenizer,
-                # model_hf_config=qwen_config,
-                tensor_parallel_size=4,  # 张量并行卡数
-                dtype=megatron_config.params_dtype,
-                # 新增显存优化参数
-                gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
-                enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
-                skip_tokenizer_init=False,
-                # max_num_batched_tokens=4096  # 批处理优化
-                trust_remote_code=True,  # 必设为True！原False是核心问题
-                enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
-            )
+            mp.set_start_method("fork", force=True)  # 强制fork，避免spawn
+            queue = mp.Queue()
+            vllm_process = mp.Process(target=init_vllm_worker, args=(queue, qwen_model_path, ))
+            vllm_process.start()
+            llm = queue.get()  # 获取vLLM实例
+            vllm_process.join()
+            # # 初始化分布式LLM（4卡TP）
+            # llm = LLM(
+            #     model=qwen_model_path,
+            #     # tokenizer=tokenizer,
+            #     # model_hf_config=qwen_config,
+            #     tensor_parallel_size=4,  # 张量并行卡数
+            #     dtype=megatron_config.params_dtype,
+            #     # 新增显存优化参数
+            #     gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
+            #     enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
+            #     skip_tokenizer_init=False,
+            #     # max_num_batched_tokens=4096  # 批处理优化
+            #     trust_remote_code=True,  # 必设为True！原False是核心问题
+            #     enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
+            # )
     elif is_actor:
         model = Qwen2MegatronActor(config, hf_model.config, megatron_config)
         model.cuda()
@@ -2088,6 +2095,25 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
 
     # run_comprehensive_debug(hf_model, tokenizer)
     return model, llm
+
+
+# 定义vLLM初始化子进程函数
+def init_vllm_worker(queue, qwen_model_path):
+    llm = LLM(
+        model=qwen_model_path,
+        # tokenizer=tokenizer,
+        # model_hf_config=qwen_config,
+        tensor_parallel_size=4,  # 张量并行卡数
+        dtype=torch.bfloat16,
+        # 新增显存优化参数
+        gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
+        enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
+        skip_tokenizer_init=False,
+        # max_num_batched_tokens=4096  # 批处理优化
+        trust_remote_code=True,  # 必设为True！原False是核心问题
+        enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
+    )
+    queue.put(llm)  # 将vLLM实例传入主进程（若需后续调用）
 
 
 def diff_model_param(hf_model, is_critic, model):
