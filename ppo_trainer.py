@@ -70,11 +70,11 @@ class MegatronDeepSpeedPPOTrainer:
         )
 
         # 4. 构建 PPO 三模型
-        self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.actor, _ = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config, is_actor=True)
         utils.print_rank_0(self.actor)
-        self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.critic, _ = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                  qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
         utils.print_rank_0(self.critic)
@@ -87,8 +87,9 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
-        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.reference, llm = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                     qwen_model_path=config.qwen_model_path)
+        self.llm = llm
         self.reference.eval()
         utils.print_rank_0(self.reference)
         for name, param in self.reference.named_parameters():
@@ -448,7 +449,8 @@ class MegatronDeepSpeedPPOTrainer:
                     tokenizer=self.tokenizer,
                     actor_model=self.actor,
                     config=gen_config,
-                    g_config=self.config
+                    g_config=self.config,
+                    llm=self.llm,
                 )
                 first_input_ids = batch['input_ids'][:, -gen_config.max_start_length:].clone().long()
                 # effective_len = batch['attention_mask'].sum(dim=1).max()

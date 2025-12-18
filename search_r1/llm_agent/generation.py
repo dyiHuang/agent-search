@@ -18,6 +18,8 @@ from torch import Tensor
 from utils import torch_functional
 from .tensor_helper import TensorHelper, TensorConfig
 
+from vllm import SamplingParams
+
 import requests
 
 client = Ark(
@@ -45,6 +47,7 @@ class LLMGenerationManager:
             actor_model,
             config: GenerationConfig,
             g_config,
+            llm,
             is_validation: bool = False,
     ):
         self.tokenizer = tokenizer
@@ -53,6 +56,7 @@ class LLMGenerationManager:
         self.g_config = g_config
         self.is_validation = is_validation
         self.micro_batch_size = g_config.actor.ppo_micro_batch_size
+        self.llm = llm
 
         self.tensor_fn = TensorHelper(TensorConfig(
             pad_token_id=tokenizer.pad_token_id,
@@ -199,19 +203,35 @@ class LLMGenerationManager:
         prompt_len = active_batch["input_ids"].shape[1]
         print(f"active_batch[attention_mask]={active_batch["attention_mask"]}")
         if self.micro_batch_size <= 1:
-            output = self.actor.generate(
-                input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token + prompt_len,
-                eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
-                pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
-                temperature=self.g_config.rollout.temperature,
-                attention_mask=active_batch["attention_mask"].to('cuda'),
-                top_k=self.g_config.rollout.top_k,
-            )
-            output = output.to('cpu')
+            start_time = time.time()
+            # output = self.actor.generate(
+            #     input_ids=active_batch["input_ids"].to('cuda'),
+            #     max_length=self.g_config.rollout.max_new_token + prompt_len,
+            #     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+            #     pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
+            #     temperature=self.g_config.rollout.temperature,
+            #     attention_mask=active_batch["attention_mask"].to('cuda'),
+            #     top_k=self.g_config.rollout.top_k,
+            # )
+            # output = output.to('cpu')
+            # return {
+            #     "input_ids": output,
+            #     "responses": output[:, prompt_len:],
+            # }
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+            output = self.llm.generate(
+                prompts=None,  # because we have already convert it to prompt token id
+                sampling_params=sampling_params,
+                prompt_token_ids=active_batch["input_ids"],
+                use_tqdm=False)
+            response = output[0].to('cpu')
+            # log_probs = output[1].to('cpu')
+
+            end_time = time.time()
+            print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
             return {
-                "input_ids": output,
-                "responses": output[:, prompt_len:],
+                "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
+                "responses": response,
             }
 
         batch_size = active_batch['input_ids'].shape[0]
@@ -222,21 +242,31 @@ class LLMGenerationManager:
                 active_batch[key] = active_batch[key].long()
         if remainder == 0:
             start_time = time.time()
-            output = self.actor.generate(
-                input_ids=active_batch["input_ids"].to('cuda'),
-                max_length=self.g_config.rollout.max_new_token + prompt_len,
-                eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
-                pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
-                temperature=self.g_config.rollout.temperature,
-                attention_mask=active_batch["attention_mask"].to('cuda'),
-                top_k=self.g_config.rollout.top_k,
-            )
-            output = output.to('cpu')
+            # output = self.actor.generate(
+            #     input_ids=active_batch["input_ids"].to('cuda'),
+            #     max_length=self.g_config.rollout.max_new_token + prompt_len,
+            #     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+            #     pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
+            #     temperature=self.g_config.rollout.temperature,
+            #     attention_mask=active_batch["attention_mask"].to('cuda'),
+            #     top_k=self.g_config.rollout.top_k,
+            # )
+            # output = output.to('cpu')
+
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+            output = self.llm.generate(
+                prompts=None,  # because we have already convert it to prompt token id
+                sampling_params=sampling_params,
+                prompt_token_ids=active_batch["input_ids"],
+                use_tqdm=False)
+            response = output[0].to('cpu')
+            # log_probs = output[1].to('cpu')
+
             end_time = time.time()
             print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
             return {
-                "input_ids": output,
-                "responses": output[:, prompt_len:],
+                "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
+                "responses": response,
             }
 
         # Add padding sequences
@@ -254,19 +284,30 @@ class LLMGenerationManager:
                 padded_active_batch[key] = padded_active_batch[key].long()
 
         # Generate with padded batch
-        padded_output = self.actor.generate(
-            input_ids=padded_active_batch["input_ids"].to('cuda'),
-            max_length=self.g_config.rollout.max_new_token + prompt_len,
-            eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
-            pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
-            temperature=self.g_config.rollout.temperature,
-            attention_mask=padded_active_batch["attention_mask"].to('cuda'),
-            top_k=self.g_config.rollout.top_k,
-        )
-        padded_output = padded_output.to('cpu')
+        # padded_output = self.actor.generate(
+        #     input_ids=padded_active_batch["input_ids"].to('cuda'),
+        #     max_length=self.g_config.rollout.max_new_token + prompt_len,
+        #     eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+        #     pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
+        #     temperature=self.g_config.rollout.temperature,
+        #     attention_mask=padded_active_batch["attention_mask"].to('cuda'),
+        #     top_k=self.g_config.rollout.top_k,
+        # )
+        # padded_output = padded_output.to('cpu')
 
+        start_time = time.time()
+        sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+        output = self.llm.generate(
+            prompts=None,  # because we have already convert it to prompt token id
+            sampling_params=sampling_params,
+            prompt_token_ids=padded_active_batch["input_ids"],
+            use_tqdm=False)
+        response = output[0].to('cpu')
+
+        end_time = time.time()
+        print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
         # Remove padding from output
-        trimmed_batch = padded_output[:-padding_size]
+        response = response[:-padding_size]
 
         # Handle meta_info if present
         # if hasattr(padded_output, 'meta_info') and padded_output.meta_info:
@@ -278,10 +319,9 @@ class LLMGenerationManager:
         #             trimmed_meta[k] = v
         #     padded_output.meta_info = trimmed_meta
 
-        padded_output = trimmed_batch
         return {
-            "input_ids": padded_output,
-            "responses": padded_output[:, prompt_len:],
+            "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
+            "responses": response,
         }
 
     def run_llm_loop(self, gen_batch, initial_input_ids: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -312,8 +352,8 @@ class LLMGenerationManager:
             rollings_active = {
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
-            gen_output = self._generate_with_batch_size_padding(rollings_active)
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
+                gen_output = self._generate_with_batch_size_padding(rollings_active)
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
                                                                                 active_mask)
@@ -361,9 +401,9 @@ class LLMGenerationManager:
             rollings_active = {
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
-            gen_output = self._generate_with_batch_size_padding(rollings_active)
 
             if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
+                gen_output = self._generate_with_batch_size_padding(rollings_active)
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
                                                                                 active_mask)

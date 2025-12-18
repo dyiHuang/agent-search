@@ -36,6 +36,7 @@ from tensor_parallel import vocab_parallel_log_probs_from_logits, vocab_parallel
 import core_algos
 import qwen_load
 from tensordict import TensorDict
+from vllm import LLM, SamplingParams
 
 from megatron.core.utils import (
     deprecate_inference_params,
@@ -1993,7 +1994,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
 
 def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False, is_actor=False) \
-        -> Union[Qwen2MegatronModel, Qwen2MegatronCritic]:
+        -> (Union[Qwen2MegatronModel, Qwen2MegatronCritic], LLM):
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
 
@@ -2043,11 +2044,24 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     #                         skip_special_tokens=True)
     # utils.print_rank_0(f"qwen2 response: {response}")
 
+    llm = None
     if not is_critic and not is_actor:
         model = Qwen2MegatronModel(config, hf_model.config, megatron_config)
         model.cuda()
         qwen_load.load_state_dict_to_megatron_qwen(hf_model.state_dict(), [model], hf_model.config,
                                                    megatron_config.params_dtype)
+        if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
+            # 初始化分布式LLM（4卡TP）
+            llm = LLM(
+                model=hf_model,
+                tokenizer=tokenizer,
+                model_hf_config=qwen_config,
+                tensor_parallel_size=4,  # 张量并行卡数
+                dtype=megatron_config.params_dtype,
+                gpu_memory_utilization=0.9,
+                skip_tokenizer_init=False,
+                # max_num_batched_tokens=4096  # 批处理优化
+            )
     elif is_actor:
         model = Qwen2MegatronActor(config, hf_model.config, megatron_config)
         model.cuda()
@@ -2069,7 +2083,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     # diff_model_param(hf_model, is_critic, model)
 
     # run_comprehensive_debug(hf_model, tokenizer)
-    return model
+    return model, llm
 
 
 def diff_model_param(hf_model, is_critic, model):
