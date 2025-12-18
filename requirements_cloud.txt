@@ -47,7 +47,7 @@ chardet
 aiohttp
 bs4
 volcengine-python-sdk[ark]
-vllm==0.6.3
+vllm==0.7.3
 
 # PyTorch官方源（确保安装GPU版本，避免CPU版兼容问题）
 # --extra-index-url https://download.pytorch.org/whl/cu121
