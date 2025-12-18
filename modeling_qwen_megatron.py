@@ -2054,7 +2054,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
             # 初始化分布式LLM（4卡TP）
             llm = LLM(
                 model=qwen_model_path,
-                tokenizer=tokenizer,
+                # tokenizer=tokenizer,
                 # model_hf_config=qwen_config,
                 tensor_parallel_size=4,  # 张量并行卡数
                 dtype=megatron_config.params_dtype,
