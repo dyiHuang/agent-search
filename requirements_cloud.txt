@@ -1,21 +1,21 @@
 # 说明：仅保留支撑「大模型加载+分布式训练+数据处理+RL微调」的核心包，间接依赖会自动安装
 
 # 1. 基础框架（必选：模型训练/计算核心）
-torch            # PyTorch核心（GPU计算基础）
+torch==2.5.0          # PyTorch核心（GPU计算基础）
 torchdata             # PyTorch数据加载工具（大模型数据管道必需）
 transformers          # Hugging Face大模型加载（如LLaMA/OPT，核心依赖）
 tokenizers            # 高效分词器（transformers配套，手动安装更稳定）
-safetensors            # 安全模型权重加载（替代pickle，大模型常用）
+safetensors           # 安全模型权重加载（替代pickle，大模型常用）
 tiktoken              # OpenAI风格token计数（PPO训练中样本截断必需）
 
 # 2. 分布式训练（必选：多卡/大模型并行）
 deepspeed             # 分布式训练框架（ZeRO优化、混合精度）
 megatron-core @ file:///home/ubuntu/project/Megatron-LM  # 本地Megatron核心（大模型并行关键）
-Megatron               # Megatron配套工具（与megatron-core协同，确保并行配置）
+Megatron              # Megatron配套工具（与megatron-core协同，确保并行配置）
 
 # 3. 数据处理（必选：数据集加载/解析）
 datasets               # Hugging Face数据集管理（RLHF数据加载）
-pyarrow               # Parquet文件解析（数据格式，核心依赖）
+pyarrow                # Parquet文件解析（数据格式，核心依赖）
 
 # 4. 配置管理（必选：训练参数配置）
 omegaconf              # 配置文件解析（处理YAML/JSON配置）
@@ -30,6 +30,10 @@ tqdm                  # 训练进度条（可选，提升体验，手动安装�
 wandb                 # 实验跟踪（可选：日志/指标可视化，按需保留）
 pybind11
 Cython
+matplotlib
+IPython
+tensordict
+tensorboard
 
 # 7. retriever 服务依赖
 google-api-core
@@ -39,6 +43,11 @@ google-auth-httplib2
 googleapis-common-protos
 uvicorn
 fastapi
+chardet
+aiohttp
+bs4
+volcengine-python-sdk[ark]
+vllm==0.11.1
 
 # PyTorch官方源（确保安装GPU版本，避免CPU版兼容问题）
 # --extra-index-url https://download.pytorch.org/whl/cu121
