@@ -138,7 +138,7 @@ class MegatronDeepSpeedPPOTrainer:
         local_rank = int(os.getenv("LOCAL_RANK", 0))
         print(f"local_rank:{local_rank}")
         # 关键2：用LOCAL_RANK绑定GPU（仅0/1，对应物理GPU0-3，无越界）
-        torch.cuda.set_device(local_rank // 2)
+        torch.cuda.set_device(local_rank % 2)
         torch.cuda.empty_cache()  # 清空缓存，避免冲突
 
         # -------------------------- 步骤 2：DeepSpeed 分布式初始化 --------------------------
