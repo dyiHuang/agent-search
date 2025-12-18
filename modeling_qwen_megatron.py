@@ -1,3 +1,4 @@
+import time
 from functools import partial
 from typing import Optional, Union, List, Dict, Callable, Any, Tuple
 
@@ -989,6 +990,7 @@ class Qwen2MegatronModel(MegatronModule):
                 },
                 batch_size=batch_size)
             # b. 前向传播：仅计算最后一个token的logits（提升效率）
+            start_time = time.time()
             logits = self.forward_backward_batch(
                 batch=batches,
                 only_last_token=True,  # 关键优化：仅返回最后一个token的logits
@@ -996,6 +998,8 @@ class Qwen2MegatronModel(MegatronModule):
                 inference_context=inference_context,
             )  # PP+TP下：LIST[batch_size/pp_size, 1, vocab_size/tp_size]
 
+            end_time = time.time()
+            print(f"rank:{torch.distributed.get_rank()} forward_backward_batch：{end_time - start_time:.2f}秒")
             # logits = [
             #     # c. 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
             #     self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
@@ -1142,6 +1146,7 @@ class Qwen2MegatronModel(MegatronModule):
             return policy_loss, stats
 
         def forward_step(batch_iter, model):
+            start_time = time.time()
             micro_batch = next(batch_iter)
             output = model.forward(input_ids=micro_batch["input_ids"],
                                    attention_mask=micro_batch["attention_mask"],
@@ -1149,6 +1154,8 @@ class Qwen2MegatronModel(MegatronModule):
                                    inference_context=inference_context)
             if inference_context is not None:
                 inference_context.increment_batch_size_offset(micro_batch["input_ids"].size(0))
+            end_time = time.time()
+            print(f"rank:{torch.distributed.get_rank()} forward_step：{end_time - start_time:.2f}秒")
             return output, partial(loss_func, data=micro_batch)
 
         # batch should be a list of batches inside micro-batches
