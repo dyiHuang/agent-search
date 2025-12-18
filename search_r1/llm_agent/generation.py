@@ -1,6 +1,8 @@
+import functools
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import re
@@ -577,54 +579,152 @@ If I want to give the final answer, I should put the answer between <answer> and
 
         return [self._passages2string(result) for result in results]
 
-    def batch_search_by_doubao(self, queries: List[str] = None) -> list[str]:
+    def _process_single_query(self, q: str, tools: dict, req_delay: float = 0.0) -> str:
         """
-        Batchified search for queries.
+        处理单个查询（抽离为独立函数，供并发调用）
         Args:
-            queries: queries to call the search engine
+            q: 单个查询语句
+            tools: 搜索工具配置
+            req_delay: 每个请求的延迟（流控用）
         Returns:
-            search results which is concatenated into a string
+            单个查询的搜索结果，失败返回空字符串
         """
-        if not queries:
-            print(f"[Warning] queries is empty")
-            return []
-        tools = [{
-            "type": "web_search",
-            "max_keyword": 2,
-            "sources": [],
-        }]
-        results = []
-        for q in queries:
-            query_str = ""
-            query_str = "".join([query_str, "<search>", q, "</search>\n"])
+        # 流控：请求前延迟，控制每秒请求数
+        if req_delay > 0:
+            time.sleep(req_delay)
+
+        try:
+            # 构造请求（简化原拼接逻辑，保持功能一致）
+            query_str = f"<search>{q}</search>\n"
             _input = [{
-                "content": f"检索<search>和</search>之间的内容一次，并用英文直接返回查询到的结果，最多150个token\n{query_str}",
-                "role": "user"}]
+                "content": (
+                    "检索<search>和</search>之间的内容一次，并用英文直接返回查询到的结果，最多150个token\n"
+                    f"{query_str}"
+                ),
+                "role": "user"
+            }]
+
+            # 调用doubao接口
             resp = client.responses.create(
                 model="ep-20251217150616-spbtm",
-                # model="doubao-seed-1-6-flash-250828",
                 input=_input,
                 max_output_tokens=150,
                 thinking={"type": "disabled"},
                 tools=tools,
             )
-            print(f"client.responses.create, input={_input}, resp={resp}")
+            print(f"[Success] Process query: {q[:20]}..., resp: {resp}")
 
+            # 解析返回结果（保持原逻辑）
             max_content = ""
-            for chunk in resp.output:  # 遍历每一个实时返回的片段（chunk）
+            for chunk in resp.output:
                 chunk_type = getattr(chunk, "type", "")
-                print(chunk_type)
                 if chunk_type == "message":
                     for content in chunk.content:
                         if content.type == "output_text" and len(content.text) > len(max_content):
                             max_content = content.text
+            return max_content
 
-            results.append(max_content)
+        except Exception as e:
+            # 单个请求失败不中断整体，打印异常并返回空字符串
+            print(f"[Error] Failed to process query '{q[:20]}...': {str(e)}")
+            return ""
 
-        if not results:
+    def batch_search_by_doubao(
+            self,
+            queries: List[str] = None,
+            max_concurrent: int = 5,  # 最大并发数（核心流控1）
+            req_per_second: float = 20.0  # 每秒最大请求数（核心流控2）
+    ) -> list[str]:
+        """
+        批量搜索（并发版，带流控）
+        Args:
+            queries: 待搜索的查询列表
+            max_concurrent: 最大并发请求数（避免瞬间打满服务端）
+            req_per_second: 每秒允许的最大请求数（避免速率超限）
+        Returns:
+            搜索结果列表（顺序与输入queries完全一致）
+        """
+        # 空值处理（保持原逻辑）
+        if not queries:
+            print(f"[Warning] queries is empty")
+            return []
+
+        # 1. 基础配置
+        tools = [{
+            "type": "web_search",
+            "max_keyword": 2,
+            "sources": [],
+        }]
+        # 计算每个请求的延迟（流控：每秒最多req_per_second个请求）
+        req_delay = 1.0 / req_per_second if req_per_second > 0 else 0.0
+
+        # 2. 绑定固定参数到单请求函数（避免线程池传参麻烦）
+        process_func = functools.partial(
+            self._process_single_query,
+            tools=tools,
+            req_delay=req_delay
+        )
+
+        # 3. 并发执行（ThreadPoolExecutor适合IO密集型任务）
+        results = []
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            # map保证结果顺序与输入queries完全一致（关键）
+            results = list(executor.map(process_func, queries))
+
+        # 4. 结果校验（保持原逻辑）
+        if not any(results):  # 所有结果都为空
             print(f"[Warning] results is empty")
 
         return results
+
+    # def batch_search_by_doubao(self, queries: List[str] = None) -> list[str]:
+    #     """
+    #     Batchified search for queries.
+    #     Args:
+    #         queries: queries to call the search engine
+    #     Returns:
+    #         search results which is concatenated into a string
+    #     """
+    #     if not queries:
+    #         print(f"[Warning] queries is empty")
+    #         return []
+    #     tools = [{
+    #         "type": "web_search",
+    #         "max_keyword": 2,
+    #         "sources": [],
+    #     }]
+    #     results = []
+    #     for q in queries:
+    #         query_str = ""
+    #         query_str = "".join([query_str, "<search>", q, "</search>\n"])
+    #         _input = [{
+    #             "content": f"检索<search>和</search>之间的内容一次，并用英文直接返回查询到的结果，最多150个token\n{query_str}",
+    #             "role": "user"}]
+    #         resp = client.responses.create(
+    #             model="ep-20251217150616-spbtm",
+    #             # model="doubao-seed-1-6-flash-250828",
+    #             input=_input,
+    #             max_output_tokens=150,
+    #             thinking={"type": "disabled"},
+    #             tools=tools,
+    #         )
+    #         print(f"client.responses.create, input={_input}, resp={resp}")
+    #
+    #         max_content = ""
+    #         for chunk in resp.output:  # 遍历每一个实时返回的片段（chunk）
+    #             chunk_type = getattr(chunk, "type", "")
+    #             print(chunk_type)
+    #             if chunk_type == "message":
+    #                 for content in chunk.content:
+    #                     if content.type == "output_text" and len(content.text) > len(max_content):
+    #                         max_content = content.text
+    #
+    #         results.append(max_content)
+    #
+    #     if not results:
+    #         print(f"[Warning] results is empty")
+    #
+    #     return results
 
     def _batch_search(self, queries):
 
