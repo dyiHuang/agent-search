@@ -2,7 +2,7 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export ARK_API_KEY=    # for doubao api
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 MASTER_ADDR=localhost
 MASTER_PORT=6000
 NNODES=1
