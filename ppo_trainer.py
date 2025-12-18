@@ -75,7 +75,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         llm = None
         if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            mp.set_start_method("fork", force=True)  # 强制fork，避免spawn
+            # mp.set_start_method("fork", force=True)  # 强制fork，避免spawn
             queue = mp.Queue()
             vllm_process = mp.Process(target=init_vllm_worker, args=(queue, config.qwen_model_path, ))
             vllm_process.start()
