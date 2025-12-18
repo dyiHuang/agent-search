@@ -1004,6 +1004,7 @@ class Qwen2MegatronModel(MegatronModule):
             #     # c. 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
             #     self.gather_logits_across_tp(l) for l in logits]  # [batch_size, 1, vocab_size]
 
+            start_time = time.time()
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # 确保正确聚合所有micro batch的logits
                 if isinstance(logits, list):
@@ -1023,6 +1024,8 @@ class Qwen2MegatronModel(MegatronModule):
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
 
+            end_time = time.time()
+            print(f"rank:{torch.distributed.get_rank()} broadcast logits：{end_time - start_time:.2f}秒")
             # utils.print_rank_0(f"after broadcast, logits shape : {logits.shape}")
 
             # last token
