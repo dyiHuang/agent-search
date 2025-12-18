@@ -1,5 +1,5 @@
 #export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export CUDA_VISIBLE_DEVICES=0,0,1,1,2,2,3,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 export ARK_API_KEY=    # for doubao api
 
 GPUS_PER_NODE=8
@@ -10,5 +10,6 @@ NODE_RANK=0
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun $DISTRIBUTED_ARGS \
        main_ppo.py
