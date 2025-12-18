@@ -134,6 +134,12 @@ class MegatronDeepSpeedPPOTrainer:
         dp_size = world_size // (tp_size * pp_size)
         assert tp_size * pp_size * dp_size == world_size, f"world_size:{world_size}, dp_size:{dp_size}并行度不匹配：TP*PP*DP != WORLD_SIZE"
 
+        # 关键1：获取torchrun自动设置的LOCAL_RANK（每卡的本地rank，0/1）
+        local_rank = int(os.getenv("LOCAL_RANK", 0))
+        # 关键2：用LOCAL_RANK绑定GPU（仅0/1，对应物理GPU0-3，无越界）
+        torch.cuda.set_device(local_rank)
+        torch.cuda.empty_cache()  # 清空缓存，避免冲突
+
         # -------------------------- 步骤 2：DeepSpeed 分布式初始化 --------------------------
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
         deepspeed.init_distributed(
