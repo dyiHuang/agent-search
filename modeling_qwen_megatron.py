@@ -2055,7 +2055,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
             llm = LLM(
                 model=hf_model,
                 tokenizer=tokenizer,
-                model_hf_config=qwen_config,
+                # model_hf_config=qwen_config,
                 tensor_parallel_size=4,  # 张量并行卡数
                 dtype=megatron_config.params_dtype,
                 gpu_memory_utilization=0.9,
