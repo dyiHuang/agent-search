@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 
+import ray
 from deepspeed.runtime.model_checkpointing import CheckpointWriterFactory, CHECKPOINT_WRITER
 from deepspeed.runtime.model_checkpointing.data_parallel_writer_factory import DataParallelWriterConfig
 from deepspeed.utils import groups
@@ -42,24 +43,6 @@ from vllm import LLM, SamplingParams
 # 初始化 Writer（指定日志目录）
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
 
-# 定义vLLM初始化子进程函数
-def init_vllm_worker(queue, qwen_model_path):
-    llm = LLM(
-        model=qwen_model_path,
-        # tokenizer=tokenizer,
-        # model_hf_config=qwen_config,
-        tensor_parallel_size=4,  # 张量并行卡数
-        dtype=torch.bfloat16,
-        # 新增显存优化参数
-        gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
-        enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
-        skip_tokenizer_init=False,
-        # max_num_batched_tokens=4096  # 批处理优化
-        trust_remote_code=True,  # 必设为True！原False是核心问题
-        enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
-    )
-    queue.put(llm)  # 将vLLM实例传入主进程（若需后续调用）
-
 
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
@@ -72,31 +55,6 @@ class MegatronDeepSpeedPPOTrainer:
                                                        )
         # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        llm = None
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            # mp.set_start_method("fork", force=True)  # 强制fork，避免spawn
-            queue = mp.Queue()
-            vllm_process = mp.Process(target=init_vllm_worker, args=(queue, config.qwen_model_path, ))
-            vllm_process.start()
-            llm = queue.get()  # 获取vLLM实例
-            vllm_process.join()
-            self.llm = llm
-            # # 初始化分布式LLM（4卡TP）
-            # llm = LLM(
-            #     model=qwen_model_path,
-            #     # tokenizer=tokenizer,
-            #     # model_hf_config=qwen_config,
-            #     tensor_parallel_size=4,  # 张量并行卡数
-            #     dtype=megatron_config.params_dtype,
-            #     # 新增显存优化参数
-            #     gpu_memory_utilization=0.7,  # 降低显存利用率，避免分配超时
-            #     enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
-            #     skip_tokenizer_init=False,
-            #     # max_num_batched_tokens=4096  # 批处理优化
-            #     trust_remote_code=True,  # 必设为True！原False是核心问题
-            #     enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
-            # )
 
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
@@ -115,11 +73,11 @@ class MegatronDeepSpeedPPOTrainer:
         )
 
         # 4. 构建 PPO 三模型
-        self.actor, _ = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.actor = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                 qwen_model_path=config.qwen_model_path,
                                                 lora_config=self.lora_config, is_actor=True)
         utils.print_rank_0(self.actor)
-        self.critic, _ = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.critic = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                  qwen_model_path=config.qwen_model_path,
                                                  lora_config=self.lora_config, is_critic=True)
         utils.print_rank_0(self.critic)
@@ -132,7 +90,7 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
-        self.reference, llm = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
+        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
                                                     qwen_model_path=config.qwen_model_path)
         self.reference.eval()
         utils.print_rank_0(self.reference)
@@ -152,6 +110,9 @@ class MegatronDeepSpeedPPOTrainer:
         self._init_deepspeed()
         print(
             f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
+
+        # 6. 执行Ray+Actor初始化
+        self.llm = init_ray_and_actor(config.qwen_model_path)
 
     def _init_logger(self):
         from utils.tracking import Tracking
@@ -305,7 +266,8 @@ class MegatronDeepSpeedPPOTrainer:
             #     )
             print(
                 f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer的参数分区数：{len(self.critic_optimizer.params_in_partition)}")
-            if hasattr(self.critic, 'checkpoint_engine') and self.critic.checkpoint_engine is not None and self.critic._config is not None:
+            if hasattr(self.critic,
+                       'checkpoint_engine') and self.critic.checkpoint_engine is not None and self.critic._config is not None:
                 self.critic.checkpoint_engine._writer = CheckpointWriterFactory(
                     writer_config=self.critic._config.checkpoint_config[CHECKPOINT_WRITER],
                     aio_config=self.critic._config.aio_config,
@@ -354,7 +316,8 @@ class MegatronDeepSpeedPPOTrainer:
         )
         print(
             f"当前进程 {torch.distributed.get_rank()}-self.optimizer的参数分区数：{len(self.optimizer.params_in_partition)}")
-        if hasattr(self.actor, 'checkpoint_engine') and self.actor.checkpoint_engine is not None and self.actor._config is not None:
+        if hasattr(self.actor,
+                   'checkpoint_engine') and self.actor.checkpoint_engine is not None and self.actor._config is not None:
             self.actor.checkpoint_engine._writer = CheckpointWriterFactory(
                 writer_config=self.actor._config.checkpoint_config[CHECKPOINT_WRITER],
                 aio_config=self.actor._config.aio_config,
@@ -733,7 +696,7 @@ class MegatronDeepSpeedPPOTrainer:
             dataloader_iter = iter(self.train_dataloader)
             # 跳过start_index个batch（续训核心）
             if start_index > 0:
-                for _ in range(start_index-1):
+                for _ in range(start_index - 1):
                     try:
                         next(dataloader_iter)
                     except StopIteration:
@@ -802,14 +765,15 @@ class MegatronDeepSpeedPPOTrainer:
                     # pprint(f'Final validation metrics: {val_metrics}')
                     if self.critic.value_head is not None:
                         for name, param in self.critic.value_head.named_parameters():
-                            print(f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+                            print(
+                                f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
 
                     for idx, layer in enumerate(self.actor.layers):
                         if idx > 2:
                             break
                         for name, param in layer.named_parameters():
-                            print(f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
-
+                            print(
+                                f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
 
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/"
@@ -1002,7 +966,7 @@ class MegatronDeepSpeedPPOTrainer:
 
                 self.critic.allreduce_gradients()
                 # print(
-                    # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
+                # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 self.critic.step(lr_kwargs={'increment': increment})
 
                 update_successful = self.critic.was_step_applied()
@@ -1063,3 +1027,95 @@ def init_megatron_optim_config(optim_config: Dict) -> OptimizerConfig:
         use_distributed_optimizer=False,
     )
     return config
+
+
+# ========== Ray初始化（仅主进程创建Actor，其他进程连接） ==========
+def init_ray_and_actor(qwen_model_path):
+    """
+    仅LOCAL_RANK=0的主进程：
+    1. 初始化Ray并分配num_gpus张GPU
+    2. 创建TP=num_gpus的VLLMActor
+    其他进程：仅连接Ray
+    """
+    vllm_actor_ref = None
+    rank = parallel_state.get_model_parallel_group().rank()
+    num_gpus = parallel_state.get_model_parallel_world_size()
+    if rank == parallel_state.get_model_parallel_src_rank():
+        # 主进程：初始化Ray，分配4张GPU（支持TP=4）
+        ray.init(
+            ignore_reinit_error=True,
+            local_mode=False,  # 必须关闭local_mode，否则无法多卡TP
+            num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
+            # _temp_dir="/tmp/ray-tp4",
+            runtime_env={
+                "env_vars": {
+                    "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),  # 明确指定num_gpus张GPU给Actor
+                    "TRUST_REMOTE_CODE": "True",
+                    # 禁用Ray的NCCL干扰torchrun
+                    # "NCCL_ASYNC_ERROR_HANDLING": "0"
+                }
+            },
+            # 关键：允许Ray跨进程共享Actor
+            _node_ip_address="127.0.0.1"
+        )
+        print(f"[Rank {rank}] Ray initialized (master), allocated {num_gpus} GPUs for TP={num_gpus}")
+
+        # 主进程：创建TP=4的VLLMActor（绑定4张GPU）
+        @ray.remote(num_gpus=num_gpus)  # 必须设为num_gpus，匹配TP=num_gpus
+        class VLLMActor:
+            def __init__(self, model_name):
+                # Actor内初始化vLLM，TP=num_gpus（独占num_gpus张GPU）
+                self.llm = LLM(
+                    model=model_name,
+                    # tokenizer=tokenizer,
+                    # model_hf_config=qwen_config,
+                    tensor_parallel_size=num_gpus,  # 张量并行卡数
+                    dtype=torch.bfloat16,
+                    # 新增显存优化参数
+                    gpu_memory_utilization=0.4,  # 降低显存利用率，避免分配超时
+                    enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
+                    skip_tokenizer_init=False,
+                    # max_num_batched_tokens=4096  # 批处理优化
+                    trust_remote_code=True,  # 必设为True！原False是核心问题
+                    enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
+                )
+
+            def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
+                """接收cpu张量，返回输出token的cpu张量"""
+                input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
+                outputs = self.llm.generate(
+                    prompts=None,
+                    prompt_token_ids=input_ids,
+                    sampling_params=sampling_params
+                )
+                output_token_ids = torch.tensor(outputs[0].outputs[0].token_ids).long().to(f"cuda:{rank}")
+                return output_token_ids.cpu()
+
+        # 创建Actor实例，获取全局引用
+        vllm_actor_ref = VLLMActor.remote(qwen_model_path)
+        # 等待Actor初始化完成（避免其他进程调用时未就绪）
+        ray.get(vllm_actor_ref.__ray_ready__.remote())
+        print(f"[Rank {rank}] VLLMActor (TP={num_gpus}) initialized")
+    else:
+        # 非主进程：仅连接Ray集群，不创建Actor
+        ray.init(address="auto", ignore_reinit_error=True)
+        print(f"[Rank {rank}] Ray connected to master (no actor creation)")
+
+    # # 主进程广播Actor的ObjectRef到所有进程（核心：共享同一个Actor）
+    # if local_rank == 0:
+    #     # 将Actor的Ref转为可广播的ID
+    #     actor_id = ray.get(vllm_actor_ref.get_actor_id.remote()) if hasattr(vllm_actor_ref,
+    #                                                                         "get_actor_id") else vllm_actor_ref
+    #     # 广播Actor ID到所有进程
+    #     actor_id_tensor = torch.tensor([hash(actor_id)], dtype=torch.long).to(local_rank)
+    # else:
+    #     actor_id_tensor = torch.tensor([0], dtype=torch.long).to(local_rank)
+    #
+    # # 分布式广播（所有进程获取Actor的Ref）
+    # torch.distributed.broadcast(actor_id_tensor, src=0)
+    # # 所有进程通过ID获取Actor Ref
+    # if local_rank != 0:
+    #     # 从Ray集群中获取已创建的Actor
+    #     vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
+
+    return vllm_actor_ref

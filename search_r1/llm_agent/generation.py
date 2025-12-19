@@ -4,6 +4,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import ray
 import torch
 import re
 from typing import List, Dict, Any, Tuple
@@ -219,13 +220,7 @@ class LLMGenerationManager:
             #     "responses": output[:, prompt_len:],
             # }
             sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
-            output = self.llm.generate(
-                prompts=None,  # because we have already convert it to prompt token id
-                sampling_params=sampling_params,
-                prompt_token_ids=active_batch["input_ids"],
-                use_tqdm=False)
-            response = output[0].to('cpu')
-            # log_probs = output[1].to('cpu')
+            response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
 
             end_time = time.time()
             print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
@@ -254,12 +249,7 @@ class LLMGenerationManager:
             # output = output.to('cpu')
 
             sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
-            output = self.llm.generate(
-                prompts=None,  # because we have already convert it to prompt token id
-                sampling_params=sampling_params,
-                prompt_token_ids=active_batch["input_ids"],
-                use_tqdm=False)
-            response = output[0].to('cpu')
+            response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
             # log_probs = output[1].to('cpu')
 
             end_time = time.time()
@@ -297,12 +287,7 @@ class LLMGenerationManager:
 
         start_time = time.time()
         sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
-        output = self.llm.generate(
-            prompts=None,  # because we have already convert it to prompt token id
-            sampling_params=sampling_params,
-            prompt_token_ids=padded_active_batch["input_ids"],
-            use_tqdm=False)
-        response = output[0].to('cpu')
+        response = ray.get(self.llm.generate_from_tensor.remote(padded_active_batch["input_ids"].to('cpu'), sampling_params))
 
         end_time = time.time()
         print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")

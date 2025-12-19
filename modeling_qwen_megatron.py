@@ -1995,7 +1995,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
 
 
 def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_config: LoraConfig = None, is_critic=False, is_actor=False) \
-        -> (Union[Qwen2MegatronModel, Qwen2MegatronCritic], LLM):
+        -> (Union[Qwen2MegatronModel, Qwen2MegatronCritic]):
     """构建 Megatron 并行化 Qwen2.5 模型，可集成 Lora"""
     qwen_config = Qwen2Config.from_pretrained(qwen_model_path)
 
@@ -2045,7 +2045,6 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     #                         skip_special_tokens=True)
     # utils.print_rank_0(f"qwen2 response: {response}")
 
-    llm = None
     if not is_critic and not is_actor:
         model = Qwen2MegatronModel(config, hf_model.config, megatron_config)
         model.cuda()
@@ -2073,7 +2072,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
     # diff_model_param(hf_model, is_critic, model)
 
     # run_comprehensive_debug(hf_model, tokenizer)
-    return model, llm
+    return model
 
 
 def diff_model_param(hf_model, is_critic, model):
