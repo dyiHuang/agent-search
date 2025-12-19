@@ -1045,7 +1045,7 @@ def init_ray_and_actor(qwen_model_path):
         # 主进程：初始化Ray，分配4张GPU（支持TP=4）
         ray.init(
             ignore_reinit_error=True,
-            local_mode=True,  # 必须关闭local_mode，否则无法多卡TP
+            local_mode=False,  # 必须关闭local_mode，否则无法多卡TP
             num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
             # _temp_dir="/tmp/ray-tp4",
             runtime_env={
@@ -1054,9 +1054,15 @@ def init_ray_and_actor(qwen_model_path):
                     "CUDA_VISIBLE_DEVICES": "0",  # 明确指定num_gpus张GPU给Actor
                     "TRUST_REMOTE_CODE": "True",
                     'TOKENIZERS_PARALLELISM': 'true',
-                    'NCCL_DEBUG': 'WARN'
+                    'NCCL_DEBUG': 'WARN',
                     # 禁用Ray的NCCL干扰torchrun
                     # "NCCL_ASYNC_ERROR_HANDLING": "0"
+                    # 再次清空Actor内的分布式环境变量
+                    "MASTER_ADDR": "",
+                    "MASTER_PORT": "",
+                    "RANK": "",
+                    "LOCAL_RANK": "",
+                    "WORLD_SIZE": "",
                 }
             },
             # 关键：允许Ray跨进程共享Actor
@@ -1068,6 +1074,9 @@ def init_ray_and_actor(qwen_model_path):
         @ray.remote(num_gpus=num_gpus)  # 必须设为num_gpus，匹配TP=num_gpus
         class VLLMActor:
             def __init__(self, model_name):
+                # Actor内再次清空分布式环境，确保无残留
+                for key in ["MASTER_ADDR", "MASTER_PORT", "RANK", "LOCAL_RANK", "WORLD_SIZE"]:
+                    os.environ.pop(key, None)
                 # Actor内初始化vLLM，TP=num_gpus（独占num_gpus张GPU）
                 self.llm = LLM(
                     model=model_name,
