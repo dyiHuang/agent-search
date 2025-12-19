@@ -1158,6 +1158,6 @@ def init_ray_and_actor(qwen_model_path):
     #     # 从Ray集群中获取已创建的Actor
     #     vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
 
-    torch.distributed.barrier()
+    time.sleep(10)
 
     return vllm_actor_ref
