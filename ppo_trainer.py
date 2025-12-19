@@ -1040,7 +1040,7 @@ def init_ray_and_actor(qwen_model_path):
     """
     vllm_actor_ref = None
     rank = parallel_state.get_model_parallel_group().rank()
-    num_gpus = parallel_state.get_model_parallel_world_size()
+    num_gpus = 1
     if rank == parallel_state.get_model_parallel_src_rank():
         # 主进程：初始化Ray，分配4张GPU（支持TP=4）
         ray.init(
@@ -1050,7 +1050,8 @@ def init_ray_and_actor(qwen_model_path):
             # _temp_dir="/tmp/ray-tp4",
             runtime_env={
                 "env_vars": {
-                    "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),  # 明确指定num_gpus张GPU给Actor
+                    # "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),  # 明确指定num_gpus张GPU给Actor
+                    "CUDA_VISIBLE_DEVICES": "0",  # 明确指定num_gpus张GPU给Actor
                     "TRUST_REMOTE_CODE": "True",
                     # 禁用Ray的NCCL干扰torchrun
                     # "NCCL_ASYNC_ERROR_HANDLING": "0"
@@ -1136,5 +1137,7 @@ def init_ray_and_actor(qwen_model_path):
     # if local_rank != 0:
     #     # 从Ray集群中获取已创建的Actor
     #     vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
+
+    torch.distributed.barrier()
 
     return vllm_actor_ref
