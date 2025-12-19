@@ -147,6 +147,13 @@ class MegatronDeepSpeedPPOTrainer:
         dp_size = world_size // (tp_size * pp_size)
         assert tp_size * pp_size * dp_size == world_size, f"world_size:{world_size}, dp_size:{dp_size}并行度不匹配：TP*PP*DP != WORLD_SIZE"
 
+        torch.distributed.init_process_group(
+            backend="nccl",
+            init_method="env://",
+            rank=0,
+            world_size=world_size
+        )
+
         # -------------------------- 步骤 2：DeepSpeed 分布式初始化 --------------------------
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
         deepspeed.init_distributed(
