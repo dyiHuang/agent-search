@@ -54,6 +54,7 @@ def init_ray_and_actor(qwen_model_path):
 
         def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
             """接收cpu张量，返回输出token的cpu张量"""
+            rank = 0
             input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
             outputs = self.llm.generate(
                 prompts=None,
@@ -66,7 +67,7 @@ def init_ray_and_actor(qwen_model_path):
     # 创建Actor实例，获取全局引用
     vllm_actor_ref = VLLMActor.remote(qwen_model_path)
     # 等待Actor初始化完成（避免其他进程调用时未就绪）
-    ray.get(vllm_actor_ref.__ray_ready__.remote())
+    # ray.get(vllm_actor_ref.__ray_ready__.remote())
     print(f"[Rank {rank}] VLLMActor (TP={num_gpus}) initialized")
 
 
