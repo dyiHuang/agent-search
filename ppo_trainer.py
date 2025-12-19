@@ -147,7 +147,8 @@ class MegatronDeepSpeedPPOTrainer:
         dp_size = world_size // (tp_size * pp_size)
         assert tp_size * pp_size * dp_size == world_size, f"world_size:{world_size}, dp_size:{dp_size}并行度不匹配：TP*PP*DP != WORLD_SIZE"
 
-
+        os.environ["NCCL_P2P_DISABLE"] = "1"
+        os.environ["NCCL_BLOCKING_WAIT"] = "1"
         print(f"torch.distributed.init_process_group start")
         torch.distributed.init_process_group(
             backend="nccl",
