@@ -18,8 +18,10 @@ def init_ray_and_actor(qwen_model_path):
     rank = 0
 
     ray.init(
+        address=None,
         ignore_reinit_error=True,
         local_mode=False,  # 必须关闭local_mode，否则无法多卡TP
+        num_cpus=16,
         num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
         # _temp_dir="/tmp/ray-tp4",
         runtime_env={
@@ -30,6 +32,7 @@ def init_ray_and_actor(qwen_model_path):
                 'NCCL_DEBUG': 'WARN',
             }
         },
+        _node_ip_address="0.0.0.0",
         # 关键：允许Ray跨进程共享Actor
         # _node_ip_address="127.0.0.1"
     )
