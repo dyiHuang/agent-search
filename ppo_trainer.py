@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Dict
 
 import ray
@@ -1097,9 +1098,27 @@ def init_ray_and_actor(qwen_model_path):
         ray.get(vllm_actor_ref.__ray_ready__.remote())
         print(f"[Rank {rank}] VLLMActor (TP={num_gpus}) initialized")
     else:
-        # 非主进程：仅连接Ray集群，不创建Actor
-        ray.init(address="auto", ignore_reinit_error=True)
-        print(f"[Rank {rank}] Ray connected to master (no actor creation)")
+        # 非主进程：等待主进程设置RAY_ADDRESS，并重试连接
+        max_wait_seconds = 60  # 最多等待60秒
+        wait_interval = 2
+        start_time = time.time()
+        while time.time() - start_time < max_wait_seconds:
+            # 从环境变量获取主进程的Ray地址
+            ray_address = os.getenv("RAY_ADDRESS")
+            if ray_address:
+                try:
+                    # 关键4：使用显式地址连接，而非auto
+                    ray.init(address=ray_address, ignore_reinit_error=True)
+                    print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
+                    break
+                except ConnectionError as e:
+                    print(f"[Rank {rank}] Ray connection failed, retrying... Error: {e}")
+                    time.sleep(wait_interval)
+            else:
+                print(f"[Rank {rank}] Waiting for RAY_ADDRESS from master...")
+                time.sleep(wait_interval)
+        else:
+            raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
 
     # # 主进程广播Actor的ObjectRef到所有进程（核心：共享同一个Actor）
     # if local_rank == 0:
