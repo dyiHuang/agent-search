@@ -31,7 +31,6 @@ def init_ray_and_actor(qwen_model_path):
             }
         },
         _node_ip_address="0.0.0.0",
-        _redis_port="6379"
         # 关键：允许Ray跨进程共享Actor
         # _node_ip_address="127.0.0.1"
     )
