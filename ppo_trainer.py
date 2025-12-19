@@ -1118,7 +1118,8 @@ def init_ray_and_actor(qwen_model_path):
         # 等待Actor初始化完成（避免其他进程调用时未就绪）
         ray.get(vllm_actor_ref.__ray_ready__.remote())
         print(f"[Rank {rank}] VLLMActor (TP={num_gpus}) initialized")
-    # else:
+    else:
+        time.sleep(10)
     #     # 非主进程：等待主进程设置RAY_ADDRESS，并重试连接
     #     max_wait_seconds = 60  # 最多等待60秒
     #     wait_interval = 2
@@ -1158,6 +1159,5 @@ def init_ray_and_actor(qwen_model_path):
     #     # 从Ray集群中获取已创建的Actor
     #     vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
 
-    time.sleep(10)
 
     return vllm_actor_ref
