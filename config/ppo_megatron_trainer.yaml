@@ -1,4 +1,4 @@
-global_batch_size: 2
+global_batch_size: 256
 
 data:
   tokenizer: null
@@ -80,7 +80,7 @@ megatron:
   master_addr: localhost
   master_port: 6000
   tensor_model_parallel_size: 2
-  pipeline_model_parallel_size: 1
+  pipeline_model_parallel_size: 2
 #  micro_batch_size: 64
   data_parallel_size: 1
 #  rank: 0
@@ -96,7 +96,7 @@ max_turns: 1
 actor:
   strategy: megatron  # This is for backward-compatibility
   ppo_mini_batch_size: ${global_batch_size}  # for update
-  ppo_micro_batch_size: 2  # for search
+  ppo_micro_batch_size: 256  # for search
   clip_ratio: 0.2
   entropy_coeff: 0.001
   ppo_epochs: 1
@@ -144,7 +144,7 @@ critic:
     override_opt_param_scheduler: False
 
 rollout:
-  max_new_token: 300
+  max_new_token: 500
   temperature: 1.0
   top_k: -1
 
