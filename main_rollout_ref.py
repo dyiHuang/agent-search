@@ -28,11 +28,10 @@ def init_ray_and_actor(qwen_model_path):
             "env_vars": {
                 "CUDA_VISIBLE_DEVICES": "0",  # 明确指定num_gpus张GPU给Actor
                 "TRUST_REMOTE_CODE": "True",
-                'TOKENIZERS_PARALLELISM': 'true',
-                'NCCL_DEBUG': 'WARN',
             }
         },
         _node_ip_address="0.0.0.0",
+        _redis_port="6379"
         # 关键：允许Ray跨进程共享Actor
         # _node_ip_address="127.0.0.1"
     )
