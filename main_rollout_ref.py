@@ -72,9 +72,10 @@ def init_ray_and_actor(qwen_model_path):
             # 遍历所有批次的输出，拼接为二维结构（核心修复）
             output_token_list_batch = []
             for output in outputs:  # 遍历每个批次的生成结果（共batch_size个）
-                # 每个output的outputs[0]是该批次的生成结果（单条）
                 token_ids = output.outputs[0].token_ids
-                output_token_list_batch.append(token_ids)  # 收集每个批次的一维token列表
+                # 核心修复：将元组转为列表
+                token_ids = list(token_ids)  # 元组→列表，比如 (300,400) → [300,400]
+                output_token_list_batch.append(token_ids)
 
             # 转为二维张量（shape=[batch_size, gen_len]）
             # 注意：若各批次生成长度不同，需padding到相同长度（可选，根据你的业务需求）
