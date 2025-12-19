@@ -30,7 +30,7 @@ def init_ray_and_actor(qwen_model_path):
                 "TRUST_REMOTE_CODE": "True",
             }
         },
-        _node_ip_address="0.0.0.0",
+        _node_ip_address="10.60.114.169",
         # 关键：允许Ray跨进程共享Actor
         # _node_ip_address="127.0.0.1"
     )
