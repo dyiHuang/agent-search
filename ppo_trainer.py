@@ -1063,7 +1063,7 @@ def init_ray_and_actor():
         else:
             raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
         # 从Ray集群中获取已创建的Actor
-        vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
+        vllm_actor_ref = ray.get_actor("VLLMActor", namespace="ppo_train")  # 按Actor类名获取
 
     torch.distributed.barrier()
     return vllm_actor_ref

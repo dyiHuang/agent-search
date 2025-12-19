@@ -65,6 +65,7 @@ def init_ray_and_actor(qwen_model_path):
     # 创建Actor实例，获取全局引用
     vllm_actor_ref = VLLMActor.options(
         name="VLLMActor",  # 命名Actor（适配所有2.0+版本）
+        namespace="ppo_train",
         lifetime="detached",  # 持久化（Ray 2.0+支持）
         max_restarts=3  # 重启策略
     ).remote(qwen_model_path)
