@@ -53,13 +53,23 @@ def init_ray_and_actor(qwen_model_path):
 
         def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
             """接收cpu张量，返回输出token的cpu张量"""
-            input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
+            # input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
+            # 修复1：张量转Python列表（先确保是CPU张量，再转列表）
+            # 若input_ids_cpu是一维（单条数据），转为二维：[[token1, token2, ...]]
+            if len(input_ids_cpu.shape) == 1:
+                token_ids = input_ids_cpu.tolist()  # 一维转列表：[101, 200, 300]
+                prompt_token_ids = [token_ids]  # 转为二维：[[101, 200, 300]]
+            # 若已是二维（多条数据），直接转列表
+            elif len(input_ids_cpu.shape) == 2:
+                prompt_token_ids = input_ids_cpu.tolist()
+            else:
+                raise ValueError(f"input_ids_cpu维度错误，仅支持1D/2D，当前：{input_ids_cpu.shape}")
             outputs = self.llm.generate(
                 prompts=None,
-                prompt_token_ids=input_ids,
+                prompt_token_ids=prompt_token_ids,
                 sampling_params=sampling_params
             )
-            output_token_ids = torch.tensor(outputs[0].outputs[0].token_ids).long().to(f"cuda:{rank}")
+            output_token_ids = torch.tensor(outputs[0].outputs[0].token_ids).long()
             return output_token_ids.cpu()
 
     # 创建Actor实例，获取全局引用
