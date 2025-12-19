@@ -1051,7 +1051,7 @@ def init_ray_and_actor():
             if ray_address:
                 try:
                     # 关键4：使用显式地址连接，而非auto
-                    ray.init(address=ray_address, local_mode=False, ignore_reinit_error=True, _node_ip_address="10.60.114.169")
+                    ray.init(address="auto")
                     print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
                     break
                 except ConnectionError as e:
