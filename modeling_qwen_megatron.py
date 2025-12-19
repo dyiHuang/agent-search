@@ -883,7 +883,8 @@ class Qwen2MegatronModel(MegatronModule):
             hidden_states = self.final_norm(hidden_states)
             logits = self.lm_head(hidden_states)
             # [s, b, h] -> [b, s, h]
-            logits = logits[0].transpose(1, 0).contiguous()
+            logits = logits[0].transpose(1, 0)
+            # logits = logits[0].transpose(1, 0).contiguous()
 
             # 若仅需最后一个token的logits，直接返回
             if only_last_token:
