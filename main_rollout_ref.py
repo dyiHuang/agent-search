@@ -69,8 +69,26 @@ def init_ray_and_actor(qwen_model_path):
                 prompt_token_ids=prompt_token_ids,
                 sampling_params=sampling_params
             )
-            output_token_ids = torch.tensor(outputs[0].outputs[0].token_ids).long()
-            return output_token_ids.cpu()
+            # 遍历所有批次的输出，拼接为二维结构（核心修复）
+            output_token_list_batch = []
+            for output in outputs:  # 遍历每个批次的生成结果（共batch_size个）
+                # 每个output的outputs[0]是该批次的生成结果（单条）
+                token_ids = output.outputs[0].token_ids
+                output_token_list_batch.append(token_ids)  # 收集每个批次的一维token列表
+
+            # 转为二维张量（shape=[batch_size, gen_len]）
+            # 注意：若各批次生成长度不同，需padding到相同长度（可选，根据你的业务需求）
+            max_gen_len = max(len(tokens) for tokens in output_token_list_batch)
+            padded_outputs = []
+            for tokens in output_token_list_batch:
+                # 补0到最大长度（或其他padding token）
+                padded = tokens + [151643] * (max_gen_len - len(tokens))
+                padded_outputs.append(padded)
+
+            # 转为2维CPU张量（匹配输入的批次维度）
+            output_token_ids = torch.tensor(padded_outputs, dtype=torch.long)  # shape=[batch_size, max_gen_len]
+
+            return output_token_ids
 
     # 创建Actor实例，获取全局引用
     vllm_actor_ref = VLLMActor.options(
