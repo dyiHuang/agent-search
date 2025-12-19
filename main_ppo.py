@@ -44,28 +44,4 @@ def main(config):
 
 
 if __name__ == '__main__':
-    rank = 0
-    num_gpus =4
-    # 主进程：初始化Ray，分配4张GPU（支持TP=4）
-    ray.init(
-        ignore_reinit_error=True,
-        local_mode=False,  # 必须关闭local_mode，否则无法多卡TP
-        # num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
-        # _temp_dir="/tmp/ray-tp4",
-        runtime_env={
-            "env_vars": {
-                # "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),  # 明确指定num_gpus张GPU给Actor
-                "CUDA_VISIBLE_DEVICES": "0,1,2,3",  # 明确指定num_gpus张GPU给Actor
-                "TRUST_REMOTE_CODE": "True",
-                'TOKENIZERS_PARALLELISM': 'true',
-                'NCCL_DEBUG': 'WARN',
-                # 禁用Ray的NCCL干扰torchrun
-                # "NCCL_ASYNC_ERROR_HANDLING": "0"
-                # 再次清空Actor内的分布式环境变量
-            }
-        },
-        # 关键：允许Ray跨进程共享Actor
-        _node_ip_address="127.0.0.1"
-    )
-    print(f"[Rank {rank}] Ray initialized (master), allocated {num_gpus} GPUs for TP={num_gpus}")
     main()

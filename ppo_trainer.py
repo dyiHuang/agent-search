@@ -57,9 +57,6 @@ class MegatronDeepSpeedPPOTrainer:
         # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # 6. 执行Ray+Actor初始化
-        self.llm = init_ray_and_actor(config.qwen_model_path)
-
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
 
@@ -115,6 +112,8 @@ class MegatronDeepSpeedPPOTrainer:
         print(
             f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
 
+        # 6. 执行Ray+Actor初始化
+        self.llm = init_ray_and_actor()
 
 
     def _init_logger(self):
@@ -130,10 +129,6 @@ class MegatronDeepSpeedPPOTrainer:
         # 加载配置
         os.environ["MASTER_ADDR"] = self.config.megatron.master_addr
         os.environ["MASTER_PORT"] = str(self.config.megatron.master_port)
-        os.environ["WORLD_SIZE"] = str(4)
-        os.environ["GPUS_PER_NODE"] = str(4)
-        os.environ["NNODES"] = str(1)
-        os.environ["NODE_RANK"] = str(0)
         # os.environ["WORLD_SIZE"] = str(self.config.megatron.tensor_model_parallel_size *
         #                                self.config.megatron.pipeline_model_parallel_size)
         # os.environ["RANK"] = str(self.config.megatron.rank)
@@ -146,17 +141,6 @@ class MegatronDeepSpeedPPOTrainer:
         pp_size = self.config.megatron.pipeline_model_parallel_size
         dp_size = world_size // (tp_size * pp_size)
         assert tp_size * pp_size * dp_size == world_size, f"world_size:{world_size}, dp_size:{dp_size}并行度不匹配：TP*PP*DP != WORLD_SIZE"
-
-        os.environ["NCCL_P2P_DISABLE"] = "1"
-        os.environ["NCCL_BLOCKING_WAIT"] = "1"
-        print(f"torch.distributed.init_process_group start")
-        torch.distributed.init_process_group(
-            backend="nccl",
-            init_method="env://",
-            rank=0,
-            world_size=world_size
-        )
-        print(f"torch.distributed.init_process_group end")
 
         # -------------------------- 步骤 2：DeepSpeed 分布式初始化 --------------------------
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
@@ -1048,7 +1032,7 @@ def init_megatron_optim_config(optim_config: Dict) -> OptimizerConfig:
 
 
 # ========== Ray初始化（仅主进程创建Actor，其他进程连接） ==========
-def init_ray_and_actor(qwen_model_path):
+def init_ray_and_actor():
     """
     仅LOCAL_RANK=0的主进程：
     1. 初始化Ray并分配num_gpus张GPU
@@ -1056,96 +1040,30 @@ def init_ray_and_actor(qwen_model_path):
     其他进程：仅连接Ray
     """
     vllm_actor_ref = None
-    rank = int(os.getenv("LOCAL_RANK", 0))
-    num_gpus = 4
-    if rank == 0:
-
-        # 主进程：创建TP=4的VLLMActor（绑定4张GPU）
-        @ray.remote(num_gpus=num_gpus)  # 必须设为num_gpus，匹配TP=num_gpus
-        class VLLMActor:
-            def __init__(self, model_name):
-                # 第一步：销毁已有的torch.distributed进程组（关键）
+    rank = parallel_state.get_model_parallel_group().rank()
+    if rank == parallel_state.get_model_parallel_src_rank():
+        max_wait_seconds = 60  # 最多等待60秒
+        wait_interval = 2
+        start_time = time.time()
+        while time.time() - start_time < max_wait_seconds:
+            # 从环境变量获取主进程的Ray地址
+            ray_address = os.getenv("RAY_ADDRESS")
+            if ray_address:
                 try:
-                    torch.distributed.destroy_process_group()
-                except:
-                    pass
-                # 清空所有分布式环境变量
-                for key in ["MASTER_ADDR", "MASTER_PORT", "RANK", "LOCAL_RANK", "WORLD_SIZE"]:
-                    os.environ.pop(key, None)
-                # 清空CUDA缓存
-                torch.cuda.empty_cache()
-                # Actor内初始化vLLM，TP=num_gpus（独占num_gpus张GPU）
-                self.llm = LLM(
-                    model=model_name,
-                    # tokenizer=tokenizer,
-                    # model_hf_config=qwen_config,
-                    tensor_parallel_size=num_gpus,  # 张量并行卡数
-                    dtype=torch.bfloat16,
-                    # 新增显存优化参数
-                    gpu_memory_utilization=0.4,  # 降低显存利用率，避免分配超时
-                    enforce_eager=True,  # 禁用CUDA图，减少初始化阻塞
-                    skip_tokenizer_init=False,
-                    # max_num_batched_tokens=4096  # 批处理优化
-                    trust_remote_code=True,  # 必设为True！原False是核心问题
-                    enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
-                )
+                    # 关键4：使用显式地址连接，而非auto
+                    ray.init(address=ray_address, ignore_reinit_error=True)
+                    print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
+                    break
+                except ConnectionError as e:
+                    print(f"[Rank {rank}] Ray connection failed, retrying... Error: {e}")
+                    time.sleep(wait_interval)
+            else:
+                print(f"[Rank {rank}] Waiting for RAY_ADDRESS from master...")
+                time.sleep(wait_interval)
+        else:
+            raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
+        # 从Ray集群中获取已创建的Actor
+        vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
 
-            def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
-                """接收cpu张量，返回输出token的cpu张量"""
-                input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
-                outputs = self.llm.generate(
-                    prompts=None,
-                    prompt_token_ids=input_ids,
-                    sampling_params=sampling_params
-                )
-                output_token_ids = torch.tensor(outputs[0].outputs[0].token_ids).long().to(f"cuda:{rank}")
-                return output_token_ids.cpu()
-
-        # 创建Actor实例，获取全局引用
-        vllm_actor_ref = VLLMActor.remote(qwen_model_path)
-        # 等待Actor初始化完成（避免其他进程调用时未就绪）
-        ray.get(vllm_actor_ref.__ray_ready__.remote())
-        print(f"[Rank {rank}] VLLMActor (TP={num_gpus}) initialized")
-    else:
-        time.sleep(10)
-    #     # 非主进程：等待主进程设置RAY_ADDRESS，并重试连接
-    #     max_wait_seconds = 60  # 最多等待60秒
-    #     wait_interval = 2
-    #     start_time = time.time()
-    #     while time.time() - start_time < max_wait_seconds:
-    #         # 从环境变量获取主进程的Ray地址
-    #         ray_address = os.getenv("RAY_ADDRESS")
-    #         if ray_address:
-    #             try:
-    #                 # 关键4：使用显式地址连接，而非auto
-    #                 ray.init(address=ray_address, ignore_reinit_error=True)
-    #                 print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
-    #                 break
-    #             except ConnectionError as e:
-    #                 print(f"[Rank {rank}] Ray connection failed, retrying... Error: {e}")
-    #                 time.sleep(wait_interval)
-    #         else:
-    #             print(f"[Rank {rank}] Waiting for RAY_ADDRESS from master...")
-    #             time.sleep(wait_interval)
-    #     else:
-    #         raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
-
-    # # 主进程广播Actor的ObjectRef到所有进程（核心：共享同一个Actor）
-    # if local_rank == 0:
-    #     # 将Actor的Ref转为可广播的ID
-    #     actor_id = ray.get(vllm_actor_ref.get_actor_id.remote()) if hasattr(vllm_actor_ref,
-    #                                                                         "get_actor_id") else vllm_actor_ref
-    #     # 广播Actor ID到所有进程
-    #     actor_id_tensor = torch.tensor([hash(actor_id)], dtype=torch.long).to(local_rank)
-    # else:
-    #     actor_id_tensor = torch.tensor([0], dtype=torch.long).to(local_rank)
-    #
-    # # 分布式广播（所有进程获取Actor的Ref）
-    # torch.distributed.broadcast(actor_id_tensor, src=0)
-    # # 所有进程通过ID获取Actor Ref
-    # if local_rank != 0:
-    #     # 从Ray集群中获取已创建的Actor
-    #     vllm_actor_ref = ray.get_actor("VLLMActor")  # 按Actor类名获取
-
-
+    torch.distributed.barrier()
     return vllm_actor_ref
