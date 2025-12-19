@@ -10,5 +10,5 @@ NODE_RANK=0
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-ray job submit $DISTRIBUTED_ARGS \
+ray job submit \
        -- python3 -m main_ppo.py

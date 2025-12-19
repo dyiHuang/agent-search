@@ -130,6 +130,10 @@ class MegatronDeepSpeedPPOTrainer:
         # 加载配置
         os.environ["MASTER_ADDR"] = self.config.megatron.master_addr
         os.environ["MASTER_PORT"] = str(self.config.megatron.master_port)
+        os.environ["WORLD_SIZE"] = str(4)
+        os.environ["GPUS_PER_NODE"] = str(4)
+        os.environ["NNODES"] = str(1)
+        os.environ["NODE_RANK"] = str(0)
         # os.environ["WORLD_SIZE"] = str(self.config.megatron.tensor_model_parallel_size *
         #                                self.config.megatron.pipeline_model_parallel_size)
         # os.environ["RANK"] = str(self.config.megatron.rank)
