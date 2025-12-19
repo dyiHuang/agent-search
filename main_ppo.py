@@ -50,7 +50,7 @@ if __name__ == '__main__':
     ray.init(
         ignore_reinit_error=True,
         local_mode=False,  # 必须关闭local_mode，否则无法多卡TP
-        num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
+        # num_gpus=num_gpus,  # 为Ray集群分配num_gpus张GPU
         # _temp_dir="/tmp/ray-tp4",
         runtime_env={
             "env_vars": {
