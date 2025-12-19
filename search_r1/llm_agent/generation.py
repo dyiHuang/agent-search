@@ -219,7 +219,7 @@ class LLMGenerationManager:
             #     "input_ids": output,
             #     "responses": output[:, prompt_len:],
             # }
-            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
             response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
 
             end_time = time.time()
@@ -248,7 +248,7 @@ class LLMGenerationManager:
             # )
             # output = output.to('cpu')
 
-            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
             response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
             # log_probs = output[1].to('cpu')
 
@@ -286,7 +286,7 @@ class LLMGenerationManager:
         # padded_output = padded_output.to('cpu')
 
         start_time = time.time()
-        sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token + prompt_len)
+        sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
         response = ray.get(self.llm.generate_from_tensor.remote(padded_active_batch["input_ids"].to('cpu'), sampling_params))
 
         end_time = time.time()
