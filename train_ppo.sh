@@ -3,7 +3,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 export ARK_API_KEY=    # for doubao api
 export RAY_ADDRESS=
 
-ray start --address=RAY_ADDRESS
+ray start --address=$RAY_ADDRESS
 
 GPUS_PER_NODE=4
 MASTER_ADDR=localhost
