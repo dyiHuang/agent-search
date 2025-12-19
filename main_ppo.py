@@ -55,7 +55,7 @@ if __name__ == '__main__':
         runtime_env={
             "env_vars": {
                 # "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),  # 明确指定num_gpus张GPU给Actor
-                "CUDA_VISIBLE_DEVICES": "0",  # 明确指定num_gpus张GPU给Actor
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3",  # 明确指定num_gpus张GPU给Actor
                 "TRUST_REMOTE_CODE": "True",
                 'TOKENIZERS_PARALLELISM': 'true',
                 'NCCL_DEBUG': 'WARN',
