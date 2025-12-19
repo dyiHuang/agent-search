@@ -7,8 +7,9 @@ MASTER_ADDR=localhost
 MASTER_PORT=6000
 NNODES=1
 NODE_RANK=0
+RAY_DASHBOARD_ADDRESS="http://localhost:8265"
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-ray job submit \
+ray job submit --address=$RAY_DASHBOARD_ADDRESS \
        -- python3 -m main_ppo.py
