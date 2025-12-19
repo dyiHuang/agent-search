@@ -57,6 +57,9 @@ class MegatronDeepSpeedPPOTrainer:
         # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        # 6. 执行Ray+Actor初始化
+        self.llm = init_ray_and_actor(config.qwen_model_path)
+
         # 1. 初始化分布式环境（Megatron + DeepSpeed 协同）
         self._init_distributed()
 
@@ -112,8 +115,7 @@ class MegatronDeepSpeedPPOTrainer:
         print(
             f"rank:{parallel_state.get_model_parallel_group().rank()}, dp_rank:{parallel_state.get_data_parallel_rank()}, model_parallel_world_size:{parallel_state.get_model_parallel_world_size()}")
 
-        # 6. 执行Ray+Actor初始化
-        self.llm = init_ray_and_actor(config.qwen_model_path)
+
 
     def _init_logger(self):
         from utils.tracking import Tracking
@@ -1039,9 +1041,9 @@ def init_ray_and_actor(qwen_model_path):
     其他进程：仅连接Ray
     """
     vllm_actor_ref = None
-    rank = parallel_state.get_model_parallel_group().rank()
+    rank = int(os.getenv("LOCAL_RANK"))
     num_gpus = 1
-    if rank == parallel_state.get_model_parallel_src_rank():
+    if rank == 0:
         # 主进程：初始化Ray，分配4张GPU（支持TP=4）
         ray.init(
             ignore_reinit_error=True,
@@ -1074,9 +1076,16 @@ def init_ray_and_actor(qwen_model_path):
         @ray.remote(num_gpus=num_gpus)  # 必须设为num_gpus，匹配TP=num_gpus
         class VLLMActor:
             def __init__(self, model_name):
-                # Actor内再次清空分布式环境，确保无残留
+                # 第一步：销毁已有的torch.distributed进程组（关键）
+                try:
+                    torch.distributed.destroy_process_group()
+                except:
+                    pass
+                # 清空所有分布式环境变量
                 for key in ["MASTER_ADDR", "MASTER_PORT", "RANK", "LOCAL_RANK", "WORLD_SIZE"]:
                     os.environ.pop(key, None)
+                # 清空CUDA缓存
+                torch.cuda.empty_cache()
                 # Actor内初始化vLLM，TP=num_gpus（独占num_gpus张GPU）
                 self.llm = LLM(
                     model=model_name,
