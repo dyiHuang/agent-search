@@ -1,3 +1,5 @@
+import time
+
 import hydra
 import ray
 import torch
@@ -76,6 +78,15 @@ def main(config):
     OmegaConf.resolve(config)
 
     init_ray_and_actor(config.qwen_model_path)
+
+    print("Actor初始化完成，程序持续运行中（按Ctrl+C退出）...")
+    try:
+        while True:
+            time.sleep(3600)  # 每小时醒一次，避免空循环占用CPU
+    except KeyboardInterrupt:
+        print("接收到退出信号，开始清理Ray资源...")
+        ray.shutdown()  # 手动清理Ray资源
+        print("程序正常退出")
 
 
 if __name__ == '__main__':
