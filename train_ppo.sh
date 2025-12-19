@@ -10,5 +10,5 @@ NODE_RANK=0
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-torchrun $DISTRIBUTED_ARGS \
-       main_ppo.py
+job submit $DISTRIBUTED_ARGS \
+       -- python3 -m main_ppo.py

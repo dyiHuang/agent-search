@@ -1041,8 +1041,8 @@ def init_ray_and_actor(qwen_model_path):
     其他进程：仅连接Ray
     """
     vllm_actor_ref = None
-    rank = int(os.getenv("LOCAL_RANK"))
-    num_gpus = 1
+    rank = int(os.getenv("LOCAL_RANK", 0))
+    num_gpus = 4
     if rank == 0:
         # 主进程：初始化Ray，分配4张GPU（支持TP=4）
         ray.init(
@@ -1060,11 +1060,6 @@ def init_ray_and_actor(qwen_model_path):
                     # 禁用Ray的NCCL干扰torchrun
                     # "NCCL_ASYNC_ERROR_HANDLING": "0"
                     # 再次清空Actor内的分布式环境变量
-                    "MASTER_ADDR": "",
-                    "MASTER_PORT": "",
-                    "RANK": "",
-                    "LOCAL_RANK": "",
-                    "WORLD_SIZE": "",
                 }
             },
             # 关键：允许Ray跨进程共享Actor
