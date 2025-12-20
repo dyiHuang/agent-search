@@ -547,7 +547,7 @@ class MegatronDeepSpeedPPOTrainer:
         batch["responses"] = responses
         rm = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)
         rewards = rm(batch)
-        rewards = rewards.to('cpu')
+        # rewards = rewards.to('cpu')
         return rewards
 
     def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
@@ -574,9 +574,7 @@ class MegatronDeepSpeedPPOTrainer:
                                          epochs=self.config.actor.ppo_epochs,
                                          dataloader_kwargs={'shuffle': self.config.actor.shuffle})
         metrics = {}
-        temp = self.actor.micro_batch_size
         for data in dataloader:
-            self.actor.micro_batch_size = data.batch_size[0]
             # 模型前向传播
             metric_micro_batch = self.actor.forward_backward_batch(
                 batch=data,
@@ -640,8 +638,8 @@ class MegatronDeepSpeedPPOTrainer:
             # 更新 critic 模型
             # self.critic.backward(critic_loss)
 
+        torch.cuda.empty_cache()
         torch.distributed.barrier()
-        self.actor.micro_batch_size = temp
 
         return metrics
 
@@ -849,7 +847,7 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
-        values = values.to('cpu')
+        # values = values.to('cpu')
         # add empty cache after each compute
         torch.cuda.empty_cache()
 
@@ -901,7 +899,7 @@ class MegatronDeepSpeedPPOTrainer:
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
 
-        log_probs.to('cpu')
+        # log_probs.to('cpu')
         # add empty cache after each compute
         torch.cuda.empty_cache()
 
@@ -912,7 +910,7 @@ class MegatronDeepSpeedPPOTrainer:
             source={
                 "input_ids": input_ids.to('cuda'),
                 "attention_mask": attention_mask.to('cuda'),
-                "responses": responses.to('cuda'),
+                "responses": responses,
                 "values": values.to('cuda'),
                 "returns": returns.to('cuda'),
             },
@@ -927,10 +925,7 @@ class MegatronDeepSpeedPPOTrainer:
                                          epochs=self.config.critic.ppo_epochs,
                                          dataloader_kwargs={'shuffle': self.config.critic.shuffle})
         metrics = {}
-        temp = self.critic.micro_batch_size
         for data in dataloader:
-            self.critic.micro_batch_size = data.batch_size[0]
-            print(f"micro_batch_size:{self.critic.micro_batch_size}")
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
 
             increment = data.batch_size[0]
@@ -977,8 +972,8 @@ class MegatronDeepSpeedPPOTrainer:
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)  # append the metric from this micro-batch to global metrics.
 
+        torch.cuda.empty_cache()
         torch.distributed.barrier()
-        self.critic.micro_batch_size = temp
 
         return metrics
 
