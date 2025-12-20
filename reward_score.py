@@ -27,7 +27,7 @@ class RewardManager:
             return data['rm_scores']
 
         print(f"data['responses'].shape{data['responses'].shape}")
-        reward_tensor = torch.zeros_like(data['responses'], dtype=torch.float32)
+        reward_tensor = torch.zeros_like(data['responses'], dtype=torch.bfloat16)
 
         all_scores = []
 

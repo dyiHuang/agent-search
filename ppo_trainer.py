@@ -833,9 +833,9 @@ class MegatronDeepSpeedPPOTrainer:
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
                 values = torch.cat([o for o in output], dim=0)  # (bs, seq_size)
-                values = values.to(torch.float32)
+                values = values
             else:
-                values = torch.empty_like(attention_mask, dtype=torch.float32, device=utils.get_model_parallel_device())
+                values = torch.empty_like(attention_mask, dtype=torch.bfloat16, device=utils.get_model_parallel_device())
 
             # utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
             # utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")
@@ -888,11 +888,11 @@ class MegatronDeepSpeedPPOTrainer:
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
                 log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
-                log_probs = log_probs.to(torch.float32)
+                log_probs = log_probs
                 # print(f"ref log_probs.shape={log_probs.shape}")
             else:
                 log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1]),
-                                        dtype=torch.float32,
+                                        dtype=torch.bfloat16,
                                         device=utils.get_model_parallel_device())
 
             # broadcast across pp ranks

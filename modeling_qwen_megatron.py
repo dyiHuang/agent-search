@@ -1013,11 +1013,11 @@ class Qwen2MegatronModel(MegatronModule):
                 if isinstance(logits, list):
                     # utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
                     logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
-                logits = logits.to(torch.float32)
+                logits = logits
                 # utils.print_rank_0(f"logits shape={logits.shape}")
             else:
                 logits = torch.empty(size=(batch_size, 1, self.vocab_size),
-                                     dtype=torch.float32,
+                                     dtype=torch.bfloat16,
                                      device=input_ids.device)
 
             # utils.print_rank_0(f"before broadcast, logits shape : {logits.shape}")
@@ -1390,11 +1390,11 @@ class Qwen2MegatronModel(MegatronModule):
                 if isinstance(logits, list):
                     utils.print_rank_0(f"logits is instance of list, len={len(logits)}")
                     logits = torch.cat(logits, dim=0)  # (batch_size, 1, vocab_size/tp_size)
-                logits = logits.to(torch.float32)
+                logits = logits
                 utils.print_rank_0(f"logits shape={logits.shape}")
             else:
                 logits = torch.empty(size=(batch_size, 1, self.vocab_size),
-                                     dtype=torch.float32,
+                                     dtype=torch.bfloat16,
                                      device=input_ids.device)
 
             utils.print_rank_0(f"Logits形状: {logits.shape}")
@@ -1794,7 +1794,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         else:
             # 核心：添加1个占位可训练参数（requires_grad=True）
             # 尺寸设为1，避免占用内存
-            self.dummy_param = nn.Parameter(torch.tensor([0.0], dtype=torch.float32), requires_grad=True)
+            self.dummy_param = nn.Parameter(torch.tensor([0.0], dtype=torch.bfloat16), requires_grad=True)
 
         # 4. 冻结Actor底层参数（可选，根据训练策略调整）
         if self.freeze_actor_backbone:
@@ -1903,7 +1903,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 value_preds = nn.functional.layer_norm(
                     value_preds, normalized_shape=value_preds.shape[1:], eps=1e-5
                 )
-            value_preds = value_preds.float()
+            # value_preds = value_preds.float()
             value_preds = torch.squeeze(value_preds, dim=-1)
             return value_preds
 

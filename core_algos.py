@@ -37,7 +37,7 @@ def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange)
     pg_losses2 = -advantages * torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange)
 
     pg_loss = utils.masked_mean(torch.max(pg_losses, pg_losses2), eos_mask)
-    pg_clipfrac = utils.masked_mean(torch.gt(pg_losses2, pg_losses).float(), eos_mask)
+    pg_clipfrac = utils.masked_mean(torch.gt(pg_losses2, pg_losses), eos_mask)
     return pg_loss, pg_clipfrac, ppo_kl
 
 
@@ -63,7 +63,7 @@ def compute_value_loss(vpreds, returns, values, eos_mask, cliprange_value):
     vf_losses1 = (vpreds - returns) ** 2
     vf_losses2 = (vpredclipped - returns) ** 2
     vf_loss = 0.5 * utils.masked_mean(torch.max(vf_losses1, vf_losses2), eos_mask)
-    vf_clipfrac = utils.masked_mean(torch.gt(vf_losses2, vf_losses1).float(), eos_mask)
+    vf_clipfrac = utils.masked_mean(torch.gt(vf_losses2, vf_losses1), eos_mask)
     return vf_loss, vf_clipfrac
 
 
