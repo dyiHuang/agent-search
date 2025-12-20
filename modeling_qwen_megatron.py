@@ -890,7 +890,7 @@ class Qwen2MegatronModel(MegatronModule):
             if only_last_token:
                 logits = logits[:, -1:]  # [batch, 1, vocab_size]
 
-            logits = logits.float()
+            # logits = logits.float()
             return logits
         return hidden_states
 
