@@ -711,7 +711,7 @@ class MegatronDeepSpeedPPOTrainer:
                 cpu_state_dict = {}
                 for k, v in state_dict.items():
                     cpu_state_dict[k] = v.to('cpu')
-                    cpu_state_dict[k].data = 0.0
+                    cpu_state_dict[k].data = torch.zeros_like(cpu_state_dict[k])
 
                 ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
                                                           parallel_state.get_tensor_model_parallel_rank(),
