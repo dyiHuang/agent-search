@@ -120,13 +120,6 @@ def init_ray_and_actor(qwen_model_path):
 
         def sync_model_params(self, state_dict: Dict[str, Any], tp_rank, tp_size):
             full_state_dict = self.vllm_model.state_dict()
-            print(f"rank:{rank} state_dict:{state_dict.keys()}")
-            if tp_rank == 0:
-                print(f"full_state_dict:{full_state_dict.keys()}")
-                with torch.no_grad():
-                    for k, v in full_state_dict.items():
-                        print(f"k:{k}, mean: {v.mean():.6f}, std: {v.std():.6f}")
-
             with torch.no_grad():
                 for k, v in state_dict.items():
                     if k == "embedding.weight":
@@ -240,7 +233,7 @@ def init_ray_and_actor(qwen_model_path):
             if dim == 1:
                 local_param[:, start:end].data.copy_(remote_pram.data)
 
-        def _vllm_to_hf_name(self, vllm_name):
+        def print_state_dict(self, tp_rank):
             """vllm参数名 → HF参数名映射（适配Qwen2.5-7B）"""
             # mapping = {
             #     "embedding.weight": "model.embed_tokens.weight",
@@ -260,7 +253,14 @@ def init_ray_and_actor(qwen_model_path):
             #     "lm_head.weight": "lm_head.weight"
             # }
             #
-            return vllm_name
+
+            full_state_dict = self.vllm_model.state_dict()
+            if tp_rank == 0:
+                print(f"full_state_dict:{full_state_dict.keys()}")
+                with torch.no_grad():
+                    for k, v in full_state_dict.items():
+                        print(f"k:{k}, mean: {v.mean():.6f}, std: {v.std():.6f}")
+            return
 
     # 创建Actor实例，获取全局引用
     vllm_actor_ref = VLLMActor.options(

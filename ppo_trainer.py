@@ -707,6 +707,9 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
                 #
                 # continue
+                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
+                torch.distributed.barrier()
+
                 state_dict = self.actor.module_state_dict()
                 cpu_state_dict = {}
                 for k, v in state_dict.items():
@@ -720,6 +723,8 @@ class MegatronDeepSpeedPPOTrainer:
                                                           parallel_state.get_tensor_model_parallel_world_size()))
 
                 torch.distributed.barrier()
+                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
+                torch.distributed.barrier()
 
                 for k, v in state_dict.items():
                     if v is None:
@@ -730,6 +735,8 @@ class MegatronDeepSpeedPPOTrainer:
                                                           parallel_state.get_tensor_model_parallel_rank(),
                                                           parallel_state.get_tensor_model_parallel_world_size()))
 
+                torch.distributed.barrier()
+                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
                 torch.distributed.barrier()
                 return
 
