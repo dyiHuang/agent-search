@@ -54,37 +54,13 @@ def init_ray_and_actor(qwen_model_path):
                 enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
             )
             # 获取vllm底层的模型核心（TP分片后的模型）
-            self.vllm_model = self.get_vllm_underlying_model(self.llm.engine.model_executor)
-
-        @staticmethod
-        def get_vllm_underlying_model(model_executor) -> torch.nn.Module:
-            """
-            通用获取vllm底层模型的方法（兼容所有vllm版本/执行器类型）
-            核心：反射遍历属性，找到真正的模型对象
-            """
-            # 步骤1：遍历model_executor的所有属性，找模型相关对象
-            for attr_name in dir(model_executor):
-                # 跳过私有方法/属性
-                if attr_name.startswith("__"):
-                    continue
-                # 获取属性值
-                attr_val = getattr(model_executor, attr_name)
-                # 判断是否是模型（nn.Module子类，且包含layers/embed_tokens等特征）
-                if isinstance(attr_val, torch.nn.Module):
-                    if hasattr(attr_val, "layers") or hasattr(attr_val, "embed_tokens"):
-                        return attr_val
-                # 处理worker封装（v0.6+ UniProcExecutor）
-                elif "worker" in attr_name.lower() and hasattr(attr_val, "model"):
-                    worker_model = getattr(attr_val, "model")
-                    if isinstance(worker_model, torch.nn.Module):
-                        return worker_model
-
-            # 步骤2：兜底——遍历model_executor的内部属性（深度查找）
-            for name, obj in inspect.getmembers(model_executor):
-                if isinstance(obj, torch.nn.Module) and (hasattr(obj, "layers") or hasattr(obj, "embed_tokens")):
-                    return obj
-
-            raise RuntimeError(f"无法找到vllm底层模型！执行器属性：{dir(model_executor)}")
+            workers = self.llm.llm_engine.workers
+            if hasattr(workers, 'model_runner'):
+                # 访问模型运行器
+                model_runner = workers.model_runner
+                # 获取底层模型
+                self.vllm_model = model_runner.model
+                print(f"模型类型: {type(self.vllm_model)}")
 
         def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
             """接收cpu张量，返回输出token的cpu张量"""
