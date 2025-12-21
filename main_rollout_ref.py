@@ -119,7 +119,7 @@ def init_ray_and_actor(qwen_model_path):
             return output_token_ids, logits_tensor
 
         def sync_model_params(self, state_dict: Dict[str, Any], tp_rank, tp_size):
-            full_state_dict = self.vllm_model.named_parameters()
+            full_state_dict = self.vllm_model.state_dict()
             print(f"rank:{rank} state_dict:{state_dict.keys()}")
             if tp_rank == 0:
                 print(f"full_state_dict:{full_state_dict.keys()}")
