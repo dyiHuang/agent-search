@@ -707,7 +707,7 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
                 #
                 # continue
-                state_dict = self.actor.state_dict()
+                state_dict = self.actor.module_state_dict()
                 cpu_state_dict = {}
                 for k, v in state_dict.items():
                     cpu_state_dict[k] = v.to('cpu')
