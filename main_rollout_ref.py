@@ -54,7 +54,8 @@ def init_ray_and_actor(qwen_model_path):
                 enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
             )
             # 获取vllm底层的模型核心（TP分片后的模型）
-            print(dir(self.llm.llm_engine.model_executor))
+            print(dir(self.llm.llm_engine.model_executor.execute_model))
+            print(f"{self.llm.llm_engine.model_executor.execute_model}")
             executor = self.llm.llm_engine.model_executor
             self.vllm_model = executor.model_executor.model
 
