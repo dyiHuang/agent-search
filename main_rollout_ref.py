@@ -6,6 +6,7 @@ import hydra
 import numpy as np
 import ray
 import torch
+from transformers import PretrainedConfig
 from vllm import LLM, SamplingParams
 
 
@@ -57,6 +58,7 @@ def init_ray_and_actor(qwen_model_path):
             print(dir(self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model))
             print(f"{self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model}")
             self.vllm_model = self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model
+            self.hf_config: PretrainedConfig = self.llm.llm_engine.model_config.hf_config
 
         def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
             """接收cpu张量，返回输出token的cpu张量"""
@@ -147,9 +149,12 @@ def init_ray_and_actor(qwen_model_path):
                     if match:
                         layer_idx = match.group(1)
                         layer_idx = int(layer_idx) - 1
-                        q_param = full_state_dict["model.layers.{}.self_attn.q_proj.weight".format(layer_idx)]
-                        k_param = full_state_dict["model.layers.{}.self_attn.k_prob.weight".format(layer_idx)]
-                        v_param = full_state_dict["model.layers.{}.self_attn.v_proj.weight".format(layer_idx)]
+                        hidden_size = self.hf_config.hidden_size
+                        qkv_param = full_state_dict["model.layers.{}.self_attn.qkv_proj.weight".format(layer_idx)]
+                        qk_size = (qkv_param.size(0) - hidden_size) // 2
+                        q_param = qkv_param[0:hidden_size, :]
+                        k_param = qkv_param[hidden_size:hidden_size + qk_size, :]
+                        v_param = qkv_param[hidden_size + qk_size:hidden_size + 2*qk_size, :]
                         q_size = q_param.size(0) // tp_size
                         k_size = k_param.size(0) // tp_size
                         v_size = v_param.size(0) // tp_size
@@ -161,9 +166,12 @@ def init_ray_and_actor(qwen_model_path):
                     if match:
                         layer_idx = match.group(1)
                         layer_idx = int(layer_idx) - 1
-                        q_param = full_state_dict["model.layers.{}.self_attn.q_proj.bias".format(layer_idx)]
-                        k_param = full_state_dict["model.layers.{}.self_attn.k_prob.bias".format(layer_idx)]
-                        v_param = full_state_dict["model.layers.{}.self_attn.v_proj.bias".format(layer_idx)]
+                        hidden_size = self.hf_config.hidden_size
+                        qkv_param = full_state_dict["model.layers.{}.self_attn.qkv_proj.bias".format(layer_idx)]
+                        qk_size = (qkv_param.size(0) - hidden_size) // 2
+                        q_param = qkv_param[0:hidden_size]
+                        k_param = qkv_param[hidden_size:hidden_size + qk_size]
+                        v_param = qkv_param[hidden_size + qk_size:hidden_size + 2 * qk_size]
                         q_size = q_param.size(0) // tp_size
                         k_size = k_param.size(0) // tp_size
                         v_size = v_param.size(0) // tp_size
@@ -184,8 +192,10 @@ def init_ray_and_actor(qwen_model_path):
                     if match:
                         layer_idx = match.group(1)
                         layer_idx = int(layer_idx) - 1
-                        gate_param = full_state_dict["model.layers.{}.mlp.gate_proj.weight".format(layer_idx)]
-                        up_param = full_state_dict["model.layers.{}.mlp.up_proj.weight".format(layer_idx)]
+                        intermediate_size = self.hf_config.intermediate_size
+                        gate_up_proj_param = full_state_dict["model.layers.{}.mlp.gate_up_proj.weight".format(layer_idx)]
+                        gate_param = gate_up_proj_param[0:intermediate_size, :]
+                        up_param = gate_up_proj_param[intermediate_size:, :]
                         gate_size = gate_param.size(0) // tp_size
                         up_size = up_param.size(0) // tp_size
                         self.param_copy(gate_param, v[0:gate_size, :], 0, tp_rank, tp_size)
@@ -219,7 +229,7 @@ def init_ray_and_actor(qwen_model_path):
                     print(k)
 
             # 清空vllm推理缓存（关键：让新参数生效）
-            self.llm.llm_engine.cache_manager.clear_all()
+            # self.llm.llm_engine.cache_manager.clear_all()
             torch.cuda.empty_cache()
 
             return
