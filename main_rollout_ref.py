@@ -83,11 +83,15 @@ def init_ray_and_actor(qwen_model_path):
             batch_logits = []
             for output in outputs:  # 遍历每个批次的生成结果（共batch_size个）
                 token_ids = output.outputs[0].token_ids
-                sample_logits = output.outputs[0].logits
+                sample_logprobs = output.outputs[0].logprobs
+                sample_logits = []
+                for token_logprobs in sample_logprobs:
+                    token_logits = [token_logprobs[k].logprob for k in sorted(token_logprobs.keys())]
+                    sample_logits.append(token_logits)
                 # 核心修复：将元组转为列表
                 token_ids = list(token_ids)  # 元组→列表，比如 (300,400) → [300,400]
                 output_token_list_batch.append(token_ids)
-                batch_logits.append(sample_logits)
+                batch_logits.append(np.array(sample_logits))
 
             # 转为二维张量（shape=[batch_size, gen_len]）
             # 注意：若各批次生成长度不同，需padding到相同长度（可选，根据你的业务需求）

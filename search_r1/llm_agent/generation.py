@@ -219,14 +219,15 @@ class LLMGenerationManager:
             #     "input_ids": output,
             #     "responses": output[:, prompt_len:],
             # }
-            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-            response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token, logprobs=self.tokenizer.vocab_size)
+            response, logits = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
 
             end_time = time.time()
             print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
             return {
                 "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
                 "responses": response,
+                "logits": logits,
             }
 
         batch_size = active_batch['input_ids'].shape[0]
@@ -248,8 +249,8 @@ class LLMGenerationManager:
             # )
             # output = output.to('cpu')
 
-            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-            response = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
+            sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token, logprobs=self.tokenizer.vocab_size)
+            response, logits = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
             # log_probs = output[1].to('cpu')
 
             end_time = time.time()
@@ -257,6 +258,7 @@ class LLMGenerationManager:
             return {
                 "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
                 "responses": response,
+                "logits": logits,
             }
 
         # Add padding sequences
@@ -286,13 +288,14 @@ class LLMGenerationManager:
         # padded_output = padded_output.to('cpu')
 
         start_time = time.time()
-        sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-        response = ray.get(self.llm.generate_from_tensor.remote(padded_active_batch["input_ids"].to('cpu'), sampling_params))
+        sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token, logprobs=self.tokenizer.vocab_size)
+        response, logits = ray.get(self.llm.generate_from_tensor.remote(padded_active_batch["input_ids"].to('cpu'), sampling_params))
 
         end_time = time.time()
         print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
         # Remove padding from output
         response = response[:-padding_size]
+        logits = logits[:-padding_size]
 
         # Handle meta_info if present
         # if hasattr(padded_output, 'meta_info') and padded_output.meta_info:
@@ -307,6 +310,7 @@ class LLMGenerationManager:
         return {
             "input_ids": torch.cat([active_batch["input_ids"], response], dim=-1),
             "responses": response,
+            "logits": logits,
         }
 
     def run_llm_loop(self, gen_batch, initial_input_ids: torch.Tensor) -> Tuple[Dict, Dict]:
