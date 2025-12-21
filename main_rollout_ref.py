@@ -53,7 +53,7 @@ def init_ray_and_actor(qwen_model_path):
                 enable_chunked_prefill=False,  # 禁用chunked prefill（解决长序列兼容）
             )
             # 获取vllm底层的模型核心（TP分片后的模型）
-            self.vllm_model = self.llm.llm_engine.model_executor.models[0]
+            self.vllm_model = self.llm.llm_engine.model_executor.model
 
         def generate_from_tensor(self, input_ids_cpu, sampling_params: SamplingParams):
             """接收cpu张量，返回输出token的cpu张量"""
