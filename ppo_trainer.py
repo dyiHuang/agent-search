@@ -714,6 +714,7 @@ class MegatronDeepSpeedPPOTrainer:
                 cpu_state_dict = {}
                 for k, v in state_dict.items():
                     if v is None:
+                        print(f"rank:{torch.distributed.get_rank()}, k:{k}")
                         continue
                     cpu_state_dict[k] = v.to('cpu')
                     cpu_state_dict[k].data = torch.zeros_like(cpu_state_dict[k])
