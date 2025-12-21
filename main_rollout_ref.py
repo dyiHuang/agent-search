@@ -141,7 +141,7 @@ def init_ray_and_actor(qwen_model_path):
 
                     if k == "lm_head.weight":
                         local_param = full_state_dict["lm_head.weight"]
-                        local_param.data.copy_(v.data)
+                        self.param_copy(local_param, v, 0, tp_rank, tp_size)
                         continue
 
                     import re
