@@ -1060,31 +1060,29 @@ def init_ray_and_actor():
     2. 创建TP=num_gpus的VLLMActor
     其他进程：仅连接Ray
     """
-    vllm_actor_ref = None
     rank = parallel_state.get_model_parallel_group().rank()
-    if rank == parallel_state.get_model_parallel_src_rank():
-        max_wait_seconds = 60  # 最多等待60秒
-        wait_interval = 2
-        start_time = time.time()
-        while time.time() - start_time < max_wait_seconds:
-            # 从环境变量获取主进程的Ray地址
-            ray_address = os.getenv("RAY_ADDRESS")
-            if ray_address:
-                try:
-                    # 关键4：使用显式地址连接，而非auto
-                    ray.init(address="auto")
-                    print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
-                    break
-                except ConnectionError as e:
-                    print(f"[Rank {rank}] Ray connection failed, retrying... Error: {e}")
-                    time.sleep(wait_interval)
-            else:
-                print(f"[Rank {rank}] Waiting for RAY_ADDRESS from master...")
+    max_wait_seconds = 60  # 最多等待60秒
+    wait_interval = 2
+    start_time = time.time()
+    while time.time() - start_time < max_wait_seconds:
+        # 从环境变量获取主进程的Ray地址
+        ray_address = os.getenv("RAY_ADDRESS")
+        if ray_address:
+            try:
+                # 关键4：使用显式地址连接，而非auto
+                ray.init(address="auto")
+                print(f"[Rank {rank}] Connected to Ray cluster at {ray_address}")
+                break
+            except ConnectionError as e:
+                print(f"[Rank {rank}] Ray connection failed, retrying... Error: {e}")
                 time.sleep(wait_interval)
         else:
-            raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
-        # 从Ray集群中获取已创建的Actor
-        vllm_actor_ref = ray.get_actor("VLLMActor", namespace="ppo_train")  # 按Actor类名获取
+            print(f"[Rank {rank}] Waiting for RAY_ADDRESS from master...")
+            time.sleep(wait_interval)
+    else:
+        raise TimeoutError(f"[Rank {rank}] Failed to connect to Ray after {max_wait_seconds}s")
+    # 从Ray集群中获取已创建的Actor
+    vllm_actor_ref = ray.get_actor("VLLMActor", namespace="ppo_train")  # 按Actor类名获取
 
     torch.distributed.barrier()
     return vllm_actor_ref
