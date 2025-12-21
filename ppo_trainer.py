@@ -115,7 +115,6 @@ class MegatronDeepSpeedPPOTrainer:
         # 6. 执行Ray+Actor初始化
         self.llm = init_ray_and_actor()
 
-
     def _init_logger(self):
         from utils.tracking import Tracking
         self.logger = Tracking(project_name=self.config.trainer.project_name,
@@ -708,6 +707,28 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
                 #
                 # continue
+                state_dict = self.actor.state_dict()
+                cpu_state_dict = {}
+                for k, v in state_dict.items():
+                    cpu_state_dict[k] = v.to('cpu')
+                    cpu_state_dict[k].data = 0.0
+
+                ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
+                                                          parallel_state.get_tensor_model_parallel_rank(),
+                                                          parallel_state.get_tensor_model_parallel_world_size()))
+
+                torch.distributed.barrier()
+
+                for k, v in state_dict.items():
+                    cpu_state_dict[k] = v.to('cpu')
+
+                ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
+                                                          parallel_state.get_tensor_model_parallel_rank(),
+                                                          parallel_state.get_tensor_model_parallel_world_size()))
+
+                torch.distributed.barrier()
+                return
+
 
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
@@ -833,7 +854,8 @@ class MegatronDeepSpeedPPOTrainer:
                 values = torch.cat([o for o in output], dim=0)  # (bs, seq_size)
                 values = values
             else:
-                values = torch.empty_like(attention_mask, dtype=torch.bfloat16, device=utils.get_model_parallel_device())
+                values = torch.empty_like(attention_mask, dtype=torch.bfloat16,
+                                          device=utils.get_model_parallel_device())
 
             # utils.print_rank_0(f"values.shape: {values.shape}, attention_mask.shape: {attention_mask.shape}")
             # utils.print_rank_0(f"values.device: {values.device}, attention_mask.device: {attention_mask.device}")

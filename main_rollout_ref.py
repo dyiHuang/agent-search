@@ -115,90 +115,109 @@ def init_ray_and_actor(qwen_model_path):
 
         def sync_model_params(self, state_dict: Dict[str, Any], tp_rank, tp_size):
             full_state_dict = self.vllm_model.named_parameters()
-            for k, v in state_dict.items():
-                if k == "embedding.weight":
-                    local_param = full_state_dict["model.embed_tokens.weight"]
-                    self.param_copy(local_param, v, 0, tp_rank, tp_size)
-                    continue
+            print(f"rank:{rank} state_dict:{state_dict.keys()}")
+            if tp_rank == 0:
+                print(f"full_state_dict:{full_state_dict.keys}")
+                with torch.no_grad():
+                    for k, v in full_state_dict.items():
+                        print(f"k:{k}, mean: {v.mean():.6f}, std: {v.std():.6f}")
 
-                if k == "final_norm.weight":
-                    local_param = full_state_dict["model.norm.weight"]
-                    local_param.data.copy_(v.data)
-                    continue
+            with torch.no_grad():
+                for k, v in state_dict.items():
+                    if k == "embedding.weight":
+                        local_param = full_state_dict["model.embed_tokens.weight"]
+                        self.param_copy(local_param, v, 0, tp_rank, tp_size)
+                        continue
 
-                if k == "lm_head.weight":
-                    local_param = full_state_dict["lm_head.weight"]
-                    local_param.data.copy_(v.data)
-                    continue
+                    if k == "final_norm.weight":
+                        local_param = full_state_dict["model.norm.weight"]
+                        local_param.data.copy_(v.data)
+                        continue
 
-                import re
-                match = re.match("layers.{}.self_attention.linear_qkv.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    q_param = full_state_dict["model.layers.{}.self_attn.q_proj.weight".format(layer_idx)]
-                    k_param = full_state_dict["model.layers.{}.self_attn.k_prob.weight".format(layer_idx)]
-                    v_param = full_state_dict["model.layers.{}.self_attn.v_proj.weight".format(layer_idx)]
-                    q_size = q_param.size(0) // tp_size
-                    k_size = k_param.size(0) // tp_size
-                    v_size = v_param.size(0) // tp_size
-                    self.param_copy(q_param, v[0:q_size, :], 0, tp_rank, tp_size)
-                    self.param_copy(k_param, v[q_size:q_size+k_size, :], 0, tp_rank, tp_size)
-                    self.param_copy(v_param, v[q_size+k_size:q_size+k_size+v_size, :], 0, tp_rank, tp_size)
-                    continue
-                match = re.match("layers.{}.self_attention.linear_qkv.bias".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    q_param = full_state_dict["model.layers.{}.self_attn.q_proj.bias".format(layer_idx)]
-                    k_param = full_state_dict["model.layers.{}.self_attn.k_prob.bias".format(layer_idx)]
-                    v_param = full_state_dict["model.layers.{}.self_attn.v_proj.bias".format(layer_idx)]
-                    q_size = q_param.size(0) // tp_size
-                    k_size = k_param.size(0) // tp_size
-                    v_size = v_param.size(0) // tp_size
-                    self.param_copy(q_param, v[0:q_size], 0, tp_rank, tp_size)
-                    self.param_copy(k_param, v[q_size:q_size+k_size], 0, tp_rank, tp_size)
-                    self.param_copy(v_param, v[q_size+k_size:q_size+k_size+v_size], 0, tp_rank, tp_size)
-                    continue
+                    if k == "lm_head.weight":
+                        local_param = full_state_dict["lm_head.weight"]
+                        local_param.data.copy_(v.data)
+                        continue
 
-                match = re.match("layers.{}.self_attention.linear_proj.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    o_param = full_state_dict["model.layers.{}.self_attn.o_proj.weight".format(layer_idx)]
-                    self.param_copy(o_param, v, 1, tp_rank, tp_size)
-                    continue
+                    import re
+                    match = re.match("layers.{}.self_attention.linear_qkv.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        q_param = full_state_dict["model.layers.{}.self_attn.q_proj.weight".format(layer_idx)]
+                        k_param = full_state_dict["model.layers.{}.self_attn.k_prob.weight".format(layer_idx)]
+                        v_param = full_state_dict["model.layers.{}.self_attn.v_proj.weight".format(layer_idx)]
+                        q_size = q_param.size(0) // tp_size
+                        k_size = k_param.size(0) // tp_size
+                        v_size = v_param.size(0) // tp_size
+                        self.param_copy(q_param, v[0:q_size, :], 0, tp_rank, tp_size)
+                        self.param_copy(k_param, v[q_size:q_size+k_size, :], 0, tp_rank, tp_size)
+                        self.param_copy(v_param, v[q_size+k_size:q_size+k_size+v_size, :], 0, tp_rank, tp_size)
+                        continue
+                    match = re.match("layers.{}.self_attention.linear_qkv.bias".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        q_param = full_state_dict["model.layers.{}.self_attn.q_proj.bias".format(layer_idx)]
+                        k_param = full_state_dict["model.layers.{}.self_attn.k_prob.bias".format(layer_idx)]
+                        v_param = full_state_dict["model.layers.{}.self_attn.v_proj.bias".format(layer_idx)]
+                        q_size = q_param.size(0) // tp_size
+                        k_size = k_param.size(0) // tp_size
+                        v_size = v_param.size(0) // tp_size
+                        self.param_copy(q_param, v[0:q_size], 0, tp_rank, tp_size)
+                        self.param_copy(k_param, v[q_size:q_size+k_size], 0, tp_rank, tp_size)
+                        self.param_copy(v_param, v[q_size+k_size:q_size+k_size+v_size], 0, tp_rank, tp_size)
+                        continue
 
-                match = re.match("layers.{}.mlp.linear_fc1.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    gate_param = full_state_dict["model.layers.{}.mlp.gate_proj.weight".format(layer_idx)]
-                    up_param = full_state_dict["model.layers.{}.mlp.up_proj.weight".format(layer_idx)]
-                    gate_size = gate_param.size(0) // tp_size
-                    up_size = up_param.size(0) // tp_size
-                    self.param_copy(gate_param, v[0:gate_size, :], 0, tp_rank, tp_size)
-                    self.param_copy(up_param, v[gate_size:gate_size + up_size, :], 0, tp_rank, tp_size)
-                    continue
+                    match = re.match("layers.{}.self_attention.linear_proj.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        o_param = full_state_dict["model.layers.{}.self_attn.o_proj.weight".format(layer_idx)]
+                        self.param_copy(o_param, v, 1, tp_rank, tp_size)
+                        continue
 
-                match = re.match("layers.{}.mlp.linear_fc2.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    down_param = full_state_dict["model.layers.{}.mlp.down_proj.weight".format(layer_idx)]
-                    self.param_copy(down_param, v, 1, tp_rank, tp_size)
-                    continue
+                    match = re.match("layers.{}.mlp.linear_fc1.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        gate_param = full_state_dict["model.layers.{}.mlp.gate_proj.weight".format(layer_idx)]
+                        up_param = full_state_dict["model.layers.{}.mlp.up_proj.weight".format(layer_idx)]
+                        gate_size = gate_param.size(0) // tp_size
+                        up_size = up_param.size(0) // tp_size
+                        self.param_copy(gate_param, v[0:gate_size, :], 0, tp_rank, tp_size)
+                        self.param_copy(up_param, v[gate_size:gate_size + up_size, :], 0, tp_rank, tp_size)
+                        continue
 
-                match = re.match("layers.{}.input_layernorm.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    local_param = full_state_dict["model.layers.{}.input_layernorm.weight".format(layer_idx)]
-                    local_param.data.copy_(v.data)
-                    continue
+                    match = re.match("layers.{}.mlp.linear_fc2.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        down_param = full_state_dict["model.layers.{}.mlp.down_proj.weight".format(layer_idx)]
+                        self.param_copy(down_param, v, 1, tp_rank, tp_size)
+                        continue
 
-                match = re.match("layers.{}.pre_mlp_layernorm.weight".replace("{}", r"(\d+)"), k)
-                if match:
-                    layer_idx = match.group(1)
-                    local_param = full_state_dict["model.layers.{}.post_attention_layernorm.weight".format(layer_idx)]
-                    local_param.data.copy_(v.data)
-                    continue
+                    match = re.match("layers.{}.input_layernorm.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        local_param = full_state_dict["model.layers.{}.input_layernorm.weight".format(layer_idx)]
+                        local_param.data.copy_(v.data)
+                        continue
 
-                print(k)
+                    match = re.match("layers.{}.pre_mlp_layernorm.weight".replace("{}", r"(\d+)"), k)
+                    if match:
+                        layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) - 1
+                        local_param = full_state_dict["model.layers.{}.post_attention_layernorm.weight".format(layer_idx)]
+                        local_param.data.copy_(v.data)
+                        continue
+
+                    print(k)
+
+            # 清空vllm推理缓存（关键：让新参数生效）
+            self.llm.llm_engine.cache_manager.clear_all()
+            torch.cuda.empty_cache()
 
             return
 
