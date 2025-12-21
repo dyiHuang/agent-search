@@ -118,7 +118,7 @@ def init_ray_and_actor(qwen_model_path):
 
             return output_token_ids, logits_tensor
 
-        def sync_model_params(self, state_dict: Dict[str, Any], tp_rank, tp_size):
+        def sync_model_params(self, state_dict: Dict[str, Any], tp_rank, tp_size, pp_rank):
             full_state_dict = self.vllm_model.state_dict()
             with torch.no_grad():
                 for k, v in state_dict.items():
@@ -141,6 +141,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.self_attention.linear_qkv.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         hidden_size = self.hf_config.hidden_size
                         qkv_param = full_state_dict["model.layers.{}.self_attn.qkv_proj.weight".format(layer_idx)]
                         qk_size = (qkv_param.size(0) - hidden_size) // 2
@@ -157,6 +158,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.self_attention.linear_qkv.bias".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         hidden_size = self.hf_config.hidden_size
                         qkv_param = full_state_dict["model.layers.{}.self_attn.qkv_proj.bias".format(layer_idx)]
                         qk_size = (qkv_param.size(0) - hidden_size) // 2
@@ -174,6 +176,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.self_attention.linear_proj.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         o_param = full_state_dict["model.layers.{}.self_attn.o_proj.weight".format(layer_idx)]
                         self.param_copy(o_param, v, 1, tp_rank, tp_size)
                         continue
@@ -181,6 +184,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.mlp.linear_fc1.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         intermediate_size = self.hf_config.intermediate_size
                         gate_up_proj_param = full_state_dict["model.layers.{}.mlp.gate_up_proj.weight".format(layer_idx)]
                         gate_param = gate_up_proj_param[0:intermediate_size, :]
@@ -194,6 +198,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.mlp.linear_fc2.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         down_param = full_state_dict["model.layers.{}.mlp.down_proj.weight".format(layer_idx)]
                         self.param_copy(down_param, v, 1, tp_rank, tp_size)
                         continue
@@ -201,6 +206,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.input_layernorm.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         local_param = full_state_dict["model.layers.{}.input_layernorm.weight".format(layer_idx)]
                         local_param.data.copy_(v.data)
                         continue
@@ -208,6 +214,7 @@ def init_ray_and_actor(qwen_model_path):
                     match = re.match("layers.{}.pre_mlp_layernorm.weight".replace("{}", r"(\d+)"), k)
                     if match:
                         layer_idx = match.group(1)
+                        layer_idx = int(layer_idx) + pp_rank * 14
                         local_param = full_state_dict["model.layers.{}.post_attention_layernorm.weight".format(layer_idx)]
                         local_param.data.copy_(v.data)
                         continue

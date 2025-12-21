@@ -721,7 +721,8 @@ class MegatronDeepSpeedPPOTrainer:
 
                 ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
                                                           parallel_state.get_tensor_model_parallel_rank(),
-                                                          parallel_state.get_tensor_model_parallel_world_size()))
+                                                          parallel_state.get_tensor_model_parallel_world_size(),
+                                                          parallel_state.get_pipeline_model_parallel_rank()))
 
                 torch.distributed.barrier()
                 ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
@@ -734,7 +735,8 @@ class MegatronDeepSpeedPPOTrainer:
 
                 ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
                                                           parallel_state.get_tensor_model_parallel_rank(),
-                                                          parallel_state.get_tensor_model_parallel_world_size()))
+                                                          parallel_state.get_tensor_model_parallel_world_size(),
+                                                          parallel_state.get_pipeline_model_parallel_rank()))
 
                 torch.distributed.barrier()
                 ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
