@@ -122,7 +122,7 @@ def init_ray_and_actor(qwen_model_path):
             full_state_dict = self.vllm_model.named_parameters()
             print(f"rank:{rank} state_dict:{state_dict.keys()}")
             if tp_rank == 0:
-                print(f"full_state_dict:{full_state_dict.keys}")
+                print(f"full_state_dict:{full_state_dict.keys()}")
                 with torch.no_grad():
                     for k, v in full_state_dict.items():
                         print(f"k:{k}, mean: {v.mean():.6f}, std: {v.std():.6f}")
