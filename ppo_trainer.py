@@ -703,49 +703,11 @@ class MegatronDeepSpeedPPOTrainer:
                         dataloader_iter = iter(self.train_dataloader)
                         break
             for batch_dict in dataloader_iter:
-
-                # self.actor.run_comprehensive_debug(self.tokenizer, batch_dict)
-                #
-                # continue
-                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
-                torch.distributed.barrier()
-
-                state_dict = self.actor.module_state_dict()
-                cpu_state_dict = {}
-                for k, v in state_dict.items():
-                    if v is None:
-                        print(f"rank:{torch.distributed.get_rank()}, k:{k}")
-                        continue
-                    cpu_state_dict[k] = v.to('cpu')
-                    cpu_state_dict[k].data = torch.zeros_like(cpu_state_dict[k])
-
-                ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
-                                                          parallel_state.get_tensor_model_parallel_rank(),
-                                                          parallel_state.get_tensor_model_parallel_world_size(),
-                                                          parallel_state.get_pipeline_model_parallel_rank()))
-
-                torch.distributed.barrier()
-                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
-                torch.distributed.barrier()
-
-                ray.get(self.llm.sync_model_params.remote(state_dict,
-                                                          parallel_state.get_tensor_model_parallel_rank(),
-                                                          parallel_state.get_tensor_model_parallel_world_size(),
-                                                          parallel_state.get_pipeline_model_parallel_rank()))
-
-                torch.distributed.barrier()
-                ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
-                torch.distributed.barrier()
-                return
-
-
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
                 print(f"rollout successful:{self.global_steps}, "
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                       f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
-
-                # continue
 
                 # 2. 计算奖励
                 rewards = self._compute_reward(batch_dict, responses)
@@ -808,13 +770,27 @@ class MegatronDeepSpeedPPOTrainer:
                 if self.global_steps >= self.total_training_steps:
                     break
 
-
+                self.sync_actor_params()
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/"
             self.actor.save_checkpoint(checkpoint_path, client_state)
 
             checkpoint_path = f"./ds_checkpoints/critic/"
             self.critic.save_checkpoint(checkpoint_path, client_state)
+
+    def sync_actor_params(self):
+        torch.distributed.barrier()
+        state_dict = self.actor.module_state_dict()
+        cpu_state_dict = {}
+        for k, v in state_dict.items():
+            if v is None:
+                continue
+            cpu_state_dict[k] = v.to('cpu')
+        ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
+                                                  parallel_state.get_tensor_model_parallel_rank(),
+                                                  parallel_state.get_tensor_model_parallel_world_size(),
+                                                  parallel_state.get_pipeline_model_parallel_rank()))
+        torch.distributed.barrier()
 
     def write_ds_scalars(self, metrics):
         if parallel_state.is_pipeline_last_stage() and parallel_state.get_tensor_model_parallel_rank() == 0:
