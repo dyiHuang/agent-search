@@ -728,12 +728,7 @@ class MegatronDeepSpeedPPOTrainer:
                 ray.get(self.llm.print_state_dict.remote(parallel_state.get_tensor_model_parallel_rank()))
                 torch.distributed.barrier()
 
-                for k, v in state_dict.items():
-                    if v is None:
-                        continue
-                    cpu_state_dict[k] = v.to('cpu')
-
-                ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
+                ray.get(self.llm.sync_model_params.remote(state_dict,
                                                           parallel_state.get_tensor_model_parallel_rank(),
                                                           parallel_state.get_tensor_model_parallel_world_size(),
                                                           parallel_state.get_pipeline_model_parallel_rank()))
@@ -749,12 +744,6 @@ class MegatronDeepSpeedPPOTrainer:
                 print(f"rollout successful:{self.global_steps}, "
                       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
                       f"dialogue:{self.tokenizer.decode(dialogue_ids[0], skip_special_tokens=True)}")
-                # print(f"rollout response_mask:{response_mask}"
-                #       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                #       f"response_mask.shape:{response_mask.shape}")
-                # print(f"rollout response:{responses}"
-                #       f"rank:{parallel_state.get_model_parallel_group().rank()}, "
-                #       f"response.shape:{responses.shape}")
 
                 # continue
 
@@ -818,6 +807,8 @@ class MegatronDeepSpeedPPOTrainer:
 
                 if self.global_steps >= self.total_training_steps:
                     break
+
+
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/"
             self.actor.save_checkpoint(checkpoint_path, client_state)
