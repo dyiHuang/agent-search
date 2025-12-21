@@ -710,6 +710,8 @@ class MegatronDeepSpeedPPOTrainer:
                 state_dict = self.actor.module_state_dict()
                 cpu_state_dict = {}
                 for k, v in state_dict.items():
+                    if v is None:
+                        continue
                     cpu_state_dict[k] = v.to('cpu')
                     cpu_state_dict[k].data = torch.zeros_like(cpu_state_dict[k])
 
@@ -720,6 +722,8 @@ class MegatronDeepSpeedPPOTrainer:
                 torch.distributed.barrier()
 
                 for k, v in state_dict.items():
+                    if v is None:
+                        continue
                     cpu_state_dict[k] = v.to('cpu')
 
                 ray.get(self.llm.sync_model_params.remote(cpu_state_dict,
