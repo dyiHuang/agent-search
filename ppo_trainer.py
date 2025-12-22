@@ -91,20 +91,11 @@ class MegatronDeepSpeedPPOTrainer:
         self.actor.config.enable_autocast = True
         self.actor.config.autocast_dtype = torch.bfloat16
 
-        self.reference = build_qwen2_megatron_model(config=config, tokenizer=self.tokenizer,
-                                                    qwen_model_path=config.qwen_model_path)
-        self.reference.eval()
-        utils.print_rank_0(self.reference)
-        for name, param in self.reference.named_parameters():
-            param.requires_grad = False
-        self.reference.config.enable_autocast = True
-        self.reference.config.autocast_dtype = torch.bfloat16
         # 确保参数可训练
         for name, param in self.actor.named_parameters():
             param.requires_grad = True
 
         self.actor.tokenizer = self.tokenizer
-        self.reference.tokenizer = self.tokenizer
         self.critic.tokenizer = self.tokenizer
 
         # 5. 初始化 Deepspeed 引擎（ZeRO 优化）
@@ -487,10 +478,6 @@ class MegatronDeepSpeedPPOTrainer:
         ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
         # ref_log_probs = None
 
-        # 解码第一条输入，确认无乱码
-        dialogue_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
-        utils.print_rank_0(f"输入文本：{dialogue_text}")  # 若输出乱码，需重新处理输入数据
-
         return response, outputs, ref_log_probs, response_mask, mask
 
     @staticmethod
@@ -862,8 +849,6 @@ class MegatronDeepSpeedPPOTrainer:
         def compute_logprobs_fn(output, data):
             _response = data["responses"]
             _response_length = _response.size(1)
-            # # 张量并行聚合：收集所有TP进程的logits，得到完整vocab分布
-            # _logits = self.reference.gather_logits_across_tp(output)
             _logits = output[:, -_response_length - 1:-1].contiguous()
             _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)  # (bs, seq_size)
             return _log_probs
@@ -880,7 +865,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # 模型前向传播
         with torch.no_grad():
-            log_probs = self.reference.forward_backward_batch(
+            log_probs = self.actor.forward_backward_batch(
                 batch=batches,
                 forward_only=True,
                 post_process_fn=compute_logprobs_fn
