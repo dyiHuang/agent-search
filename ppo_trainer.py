@@ -611,6 +611,7 @@ class MegatronDeepSpeedPPOTrainer:
 
             for metric in metric_micro_batch:
                 utils.append_to_dict(metrics, metric)
+            torch.distributed.barrier()
 
             # # 计算 PPO 损失
             # ratio = torch.exp(actor_log_probs - self.ref_log_probs.detach())
