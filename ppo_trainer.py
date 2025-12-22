@@ -839,7 +839,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # values = values.to('cpu')
         # add empty cache after each compute
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         return values
 
@@ -889,7 +889,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         # log_probs.to('cpu')
         # add empty cache after each compute
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         return log_probs
 
