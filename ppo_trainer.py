@@ -478,6 +478,8 @@ class MegatronDeepSpeedPPOTrainer:
         ref_log_probs = self._compute_ref_log_probs(outputs, mask, outputs[:, prompt_len:])
         # ref_log_probs = None
 
+        torch.distributed.barrier()
+
         return response, outputs, ref_log_probs, response_mask, mask
 
     @staticmethod
@@ -533,7 +535,7 @@ class MegatronDeepSpeedPPOTrainer:
         batch["responses"] = responses
         rm = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)
         rewards = rm(batch)
-        rewards = rewards.to('cpu')
+        # rewards = rewards.to('cpu')
         return rewards
 
     def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
@@ -837,9 +839,9 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
-        values = values.to('cpu')
+        # values = values.to('cpu')
         # add empty cache after each compute
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         return values
 
@@ -887,10 +889,9 @@ class MegatronDeepSpeedPPOTrainer:
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
 
-        torch.distributed.barrier()
-        log_probs.to('cpu')
+        # log_probs.to('cpu')
         # add empty cache after each compute
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         return log_probs
 
@@ -899,7 +900,7 @@ class MegatronDeepSpeedPPOTrainer:
             source={
                 "input_ids": input_ids.to('cuda'),
                 "attention_mask": attention_mask.to('cuda'),
-                "responses": responses,
+                "responses": responses.to('cuda'),
                 "values": values.to('cuda'),
                 "returns": returns.to('cuda'),
             },
