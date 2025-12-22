@@ -533,7 +533,7 @@ class MegatronDeepSpeedPPOTrainer:
         batch["responses"] = responses
         rm = reward_score.RewardManager(tokenizer=self.tokenizer, num_examine=0)
         rewards = rm(batch)
-        # rewards = rewards.to('cpu')
+        rewards = rewards.to('cpu')
         return rewards
 
     def _update_policy(self, ref_log_probs, outputs, responses, advantages, mask: torch.Tensor = None):
@@ -837,9 +837,9 @@ class MegatronDeepSpeedPPOTrainer:
                                         src=parallel_state.get_pipeline_model_parallel_last_rank(),
                                         group=parallel_state.get_pipeline_model_parallel_group())
 
-        # values = values.to('cpu')
+        values = values.to('cpu')
         # add empty cache after each compute
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
         return values
 
@@ -887,9 +887,9 @@ class MegatronDeepSpeedPPOTrainer:
                                         group=parallel_state.get_pipeline_model_parallel_group(),
                                         async_op=False)
 
-        # log_probs.to('cpu')
+        log_probs.to('cpu')
         # add empty cache after each compute
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
         return log_probs
 
