@@ -106,7 +106,7 @@ def init_ray_and_actor(qwen_model_path):
 
             pad_value = 0.0
             padded_logits = []
-            vocab_size = self.llm.llm_engine.model_config.vocab_size  # 获取词表大小
+            vocab_size = self.llm.llm_engine.model_config.get_vocab_size()  # 获取词表大小
             for logits in batch_logits:
                 # 计算需要padding的长度
                 pad_len = max_gen_len - len(logits)
