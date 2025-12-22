@@ -709,7 +709,7 @@ class MegatronDeepSpeedPPOTrainer:
                 # 4. 计算优势函数
                 advantages, returns = core_algos.compute_gae_advantage_return(rewards,
                                                                               critic_values,
-                                                                              eos_mask=response_mask)
+                                                                              eos_mask=response_mask.to('cuda'))
                 utils.print_rank_0(f"compute_gae_advantage_return successful:{self.global_steps}")
 
                 # 5. 更新价值网络
