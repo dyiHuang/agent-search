@@ -945,8 +945,8 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.critic_value_head.allreduce_gradients()
                 # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
-                if self.config.critic.ppo_mini_batch_size == self.config.critic.ppo_micro_batch_size:
-                    self.critic.allreduce_gradients()
+                # if self.config.critic.ppo_mini_batch_size == self.config.critic.ppo_micro_batch_size:
+                self.critic.allreduce_gradients()
                 # print(
                 # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 self.critic.step(lr_kwargs={'increment': increment})
