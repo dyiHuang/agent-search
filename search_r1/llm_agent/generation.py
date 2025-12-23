@@ -207,6 +207,7 @@ class LLMGenerationManager:
             # 截断到有效长度，转为列表
             valid_seq = seq[seq_mask].tolist()
             clean_token_lists.append(valid_seq if len(valid_seq) > 0 else [])
+        print(clean_token_lists[0])
         return clean_token_lists
 
     def _generate_with_batch_size_padding(self, active_batch: Dict) -> Dict:
