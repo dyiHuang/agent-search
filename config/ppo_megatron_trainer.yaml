@@ -1,4 +1,4 @@
-global_batch_size: 64
+global_batch_size: 512
 
 data:
   tokenizer: null

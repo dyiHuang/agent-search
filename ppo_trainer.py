@@ -693,6 +693,7 @@ class MegatronDeepSpeedPPOTrainer:
                         dataloader_iter = iter(self.train_dataloader)
                         break
             for batch_dict in dataloader_iter:
+                start_time = time.time()
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
                 print(f"rollout successful:{self.global_steps}, "
@@ -738,29 +739,19 @@ class MegatronDeepSpeedPPOTrainer:
                 }
 
                 if self.global_steps % self.config.trainer.log_interval == 0:
-                    # pprint(f'Final validation metrics: {val_metrics}')
-                    if self.critic.value_head is not None:
-                        for name, param in self.critic.value_head.named_parameters():
-                            print(
-                                f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
-
-                    for idx, layer in enumerate(self.actor.layers):
-                        if idx > 2:
-                            break
-                        for name, param in layer.named_parameters():
-                            print(
-                                f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
-
+                    utils.print_rank_0(f'Final validation metrics: {val_metrics}')
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
                     checkpoint_path = f"./ds_checkpoints/critic/"
                     self.critic.save_checkpoint(checkpoint_path, client_state)
 
+                self.sync_actor_params()
+                end_time = time.time()
+                print(f"rank:{torch.distributed.get_rank()} step：{self.global_steps} time: {end_time - start_time:.2f}秒")
+
                 if self.global_steps >= self.total_training_steps:
                     break
-
-                self.sync_actor_params()
             # 保存 checkpoint 到自定义路径
             checkpoint_path = f"./ds_checkpoints/actor/"
             self.actor.save_checkpoint(checkpoint_path, client_state)
@@ -926,14 +917,14 @@ class MegatronDeepSpeedPPOTrainer:
                 # print(
                 #     f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 # 强制打印value_head参数的梯度（bfloat16下需注意精度）
-                for name, param in self.critic.value_head.named_parameters():
-                    if param.grad is None:
-                        print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
-                    else:
-                        param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
-                        grad_norm = param.grad.norm().item()
-                        print(
-                            f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
+                # for name, param in self.critic.value_head.named_parameters():
+                #     if param.grad is None:
+                #         print(f"ERROR:当前进程 {torch.distributed.get_rank()}- {name} 无梯度！")
+                #     else:
+                #         param.grad = param.grad.contiguous()  # 修复梯度张量连续性（解决内存布局问题）
+                #         grad_norm = param.grad.norm().item()
+                #         print(
+                #             f"当前进程 {torch.distributed.get_rank()}- {name} 梯度范数：{grad_norm} 梯度数值：{param.grad}")  # 需>0才正常
 
                 # if torch.distributed.get_rank() in [2, 3]:  # 仅关注rank2/3
                 #     print(f"===== Rank {torch.distributed.get_rank()} 梯度检查 =====")
