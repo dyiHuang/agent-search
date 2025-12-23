@@ -306,7 +306,7 @@ class LLMGenerationManager:
         start_time = time.time()
         sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
         response, _ = ray.get(self.llm.generate_from_tensor.remote(
-            self.clean_padded_tensor(active_batch["input_ids"], active_batch["attention_mask"]), sampling_params))
+            self.clean_padded_tensor(padded_active_batch["input_ids"], padded_active_batch["attention_mask"]), sampling_params))
 
         end_time = time.time()
         print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
@@ -676,7 +676,7 @@ If I want to give the final answer, I should put the answer between <answer> and
     def batch_search_by_doubao(
             self,
             queries: List[str] = None,
-            max_concurrent: int = 5,  # 最大并发数（核心流控1）
+            max_concurrent: int = 15,  # 最大并发数（核心流控1）
             req_per_second: float = 20.0  # 每秒最大请求数（核心流控2）
     ) -> list[str]:
         """
