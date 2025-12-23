@@ -858,9 +858,9 @@ class MegatronDeepSpeedPPOTrainer:
 
         batches = TensorDict(
             source={
-                "input_ids": input_ids,
-                "attention_mask": mask,
-                "responses": responses,
+                "input_ids": input_ids.to('cuda'),
+                "attention_mask": mask.to('cuda'),
+                "responses": responses.to('cuda'),
             },
             batch_size=input_ids.shape[0])
 
@@ -878,7 +878,7 @@ class MegatronDeepSpeedPPOTrainer:
                 # only on last rank. It should be on every tp rank
                 log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
                 log_probs = log_probs
-                # print(f"ref log_probs.shape={log_probs.shape}")
+                print(f"ref log_probs.shape={log_probs.shape}, log_probs.dtype={log_probs.dtype}")
             else:
                 log_probs = torch.empty(size=(input_ids.shape[0], responses.shape[1]),
                                         dtype=torch.bfloat16,
