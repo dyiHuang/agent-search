@@ -248,6 +248,7 @@ class LLMGenerationManager:
 
         batch_size = active_batch['input_ids'].shape[0]
         remainder = batch_size % self.micro_batch_size
+        remainder = 0 # vllm need no pad
 
         for key in active_batch.keys():
             if isinstance(active_batch[key], torch.Tensor):
@@ -287,9 +288,6 @@ class LLMGenerationManager:
                 pad_sequence = v[0:1].repeat(padding_size, *[1] * (len(v.shape) - 1))
                 padded_active_batch[k] = torch.cat([v, pad_sequence], dim=0)
 
-        for key in padded_active_batch.keys():
-            if isinstance(padded_active_batch[key], torch.Tensor):
-                padded_active_batch[key] = padded_active_batch[key].long()
 
         # Generate with padded batch
         # padded_output = self.actor.generate(
