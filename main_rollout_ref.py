@@ -64,25 +64,27 @@ def init_ray_and_actor(qwen_model_path):
             # input_ids = input_ids_cpu.to(f"cuda:{rank}")  # TP=num_gpus时，主卡为cuda:0
             # 修复1：张量转Python列表（先确保是CPU张量，再转列表）
             # 若input_ids_cpu是一维（单条数据），转为二维：[[token1, token2, ...]]
-            if isinstance(input_ids_cpu, torch.Tensor):
-                if len(input_ids_cpu.shape) == 1:
-                    token_ids = input_ids_cpu.tolist()  # 一维转列表：[101, 200, 300]
-                    prompt_token_ids = [token_ids]  # 转为二维：[[101, 200, 300]]
-                # 若已是二维（多条数据），直接转列表
-                elif len(input_ids_cpu.shape) == 2:
-                    prompt_token_ids = input_ids_cpu.tolist()
-                else:
-                    raise ValueError(f"input_ids_cpu维度错误，仅支持1D/2D，当前：{input_ids_cpu.shape}")
-            else:
-                prompt_token_ids = input_ids_cpu
+            # if isinstance(input_ids_cpu, torch.Tensor):
+            #     if len(input_ids_cpu.shape) == 1:
+            #         token_ids = input_ids_cpu.tolist()  # 一维转列表：[101, 200, 300]
+            #         prompt_token_ids = [token_ids]  # 转为二维：[[101, 200, 300]]
+            #     # 若已是二维（多条数据），直接转列表
+            #     elif len(input_ids_cpu.shape) == 2:
+            #         prompt_token_ids = input_ids_cpu.tolist()
+            #     else:
+            #         raise ValueError(f"input_ids_cpu维度错误，仅支持1D/2D，当前：{input_ids_cpu.shape}")
+            # else:
+            #     prompt_token_ids = input_ids_cpu
+            print(f"input_ids_cpu len:{len(input_ids_cpu)}")
             outputs = self.llm.generate(
                 prompts=None,
-                prompt_token_ids=prompt_token_ids,
+                prompt_token_ids=input_ids_cpu,
                 sampling_params=sampling_params
             )
             # 遍历所有批次的输出，拼接为二维结构（核心修复）
             output_token_list_batch = []
             batch_logits = []
+            print(f"outputs len:{len(outputs)}")
             for output in outputs:  # 遍历每个批次的生成结果（共batch_size个）
                 token_ids = output.outputs[0].token_ids
                 sample_logits = []

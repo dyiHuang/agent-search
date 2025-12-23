@@ -202,12 +202,9 @@ class LLMGenerationManager:
         clean_token_lists = []
         mask = mask.to(dtype=torch.bool)
         for seq, seq_mask in zip(padded_tensor, mask):
-            print(f"seq:{seq}")
-            print(f"seq_mask:{seq_mask}")
             # 截断到有效长度，转为列表
             valid_seq = seq[seq_mask].tolist()
             clean_token_lists.append(valid_seq if len(valid_seq) > 0 else [])
-        print(clean_token_lists[0])
         return clean_token_lists
 
     def _generate_with_batch_size_padding(self, active_batch: Dict) -> Dict:
@@ -250,9 +247,6 @@ class LLMGenerationManager:
         remainder = batch_size % self.micro_batch_size
         remainder = 0 # vllm need no pad
 
-        for key in active_batch.keys():
-            if isinstance(active_batch[key], torch.Tensor):
-                active_batch[key] = active_batch[key].long()
         if remainder == 0:
             start_time = time.time()
             # output = self.actor.generate(
