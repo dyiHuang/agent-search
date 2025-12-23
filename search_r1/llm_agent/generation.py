@@ -194,8 +194,7 @@ class LLMGenerationManager:
 
         return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
 
-    @staticmethod
-    def clean_padded_tensor(padded_tensor, mask):
+    def clean_padded_tensor(self, padded_tensor, mask):
         """
         清理手动padding的张量，返回截断后的token ID列表（每个样本仅保留有效部分）
         """
@@ -204,7 +203,7 @@ class LLMGenerationManager:
         for seq, seq_mask in zip(padded_tensor, mask):
             # 截断到有效长度，转为列表
             valid_seq = seq[seq_mask].tolist()
-            clean_token_lists.append(valid_seq if len(valid_seq) > 0 else [])
+            clean_token_lists.append(valid_seq if len(valid_seq) > 0 else [self.tokenizer.pad_token_id])
         return clean_token_lists
 
     def _generate_with_batch_size_padding(self, active_batch: Dict) -> Dict:
