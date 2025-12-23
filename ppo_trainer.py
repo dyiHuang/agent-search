@@ -876,7 +876,8 @@ class MegatronDeepSpeedPPOTrainer:
 
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                 # only on last rank. It should be on every tp rank
-                log_probs = torch.cat([o for o in log_probs], dim=0)  # (bs, seq_size)
+                if isinstance(log_probs, list):
+                    log_probs = torch.cat(log_probs, dim=0)  # (bs, seq_size)
                 log_probs = log_probs
                 print(f"ref log_probs.shape={log_probs.shape}, log_probs.dtype={log_probs.dtype}")
             else:
