@@ -600,7 +600,8 @@ class MegatronDeepSpeedPPOTrainer:
             #                 print(f"参数 {name}: 梯度NaN={nan}, Inf={inf}")
             #     print(f"Rank {torch.distributed.get_rank()} 总梯度NaN={grad_nan_count}, Inf={grad_inf_count}")
 
-            self.actor.allreduce_gradients()
+            if self.config.actor.ppo_mini_batch_size == self.config.actor.ppo_micro_batch_size:
+                self.actor.allreduce_gradients()
 
             self.actor.step(lr_kwargs={'increment': increment})
 
@@ -944,7 +945,8 @@ class MegatronDeepSpeedPPOTrainer:
                 # self.critic_value_head.allreduce_gradients()
                 # self.critic_value_head.step(lr_kwargs={'increment': increment})
 
-                self.critic.allreduce_gradients()
+                if self.config.critic.ppo_mini_batch_size == self.config.critic.ppo_micro_batch_size:
+                    self.critic.allreduce_gradients()
                 # print(
                 # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
                 self.critic.step(lr_kwargs={'increment': increment})
