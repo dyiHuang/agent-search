@@ -58,6 +58,7 @@ def init_ray_and_actor(qwen_model_path):
             print(dir(self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model))
             print(f"{self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model}")
             print(f"{self.llm.llm_engine.tokenizer}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer}")
             print(f"{self.llm.llm_engine.tokenizer.tokenizer.pad_token_id}")
             print(f"{self.llm.llm_engine.tokenizer.tokenizer.unk_token}")
             print(f"{self.llm.llm_engine.tokenizer.tokenizer.pad_token}")
