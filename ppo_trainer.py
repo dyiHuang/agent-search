@@ -854,7 +854,7 @@ class MegatronDeepSpeedPPOTrainer:
             _response_length = _response.size(1)
             _logits = output[:, -_response_length - 1:-1].contiguous()
             _log_probs = vocab_parallel_log_probs_from_logits(_logits, _response)  # (bs, seq_size)
-            return _log_probs
+            return _log_probs.to(dtype=output.dtype)
 
         batches = TensorDict(
             source={
