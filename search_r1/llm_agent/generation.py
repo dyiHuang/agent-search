@@ -194,6 +194,19 @@ class LLMGenerationManager:
 
         return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
 
+    @staticmethod
+    def clean_padded_tensor(padded_tensor, mask):
+        """
+        清理手动padding的张量，返回截断后的token ID列表（每个样本仅保留有效部分）
+        """
+        clean_token_lists = []
+        mask = mask.to(dtype=torch.bool)
+        for seq, seq_mask in zip(padded_tensor, mask):
+            # 截断到有效长度，转为列表
+            valid_seq = seq[seq_mask is True].tolist()
+            clean_token_lists.append(valid_seq)
+        return clean_token_lists
+
     def _generate_with_batch_size_padding(self, active_batch: Dict) -> Dict:
         """
             Wrapper for generation that handles multi-GPU padding requirements.
@@ -202,7 +215,7 @@ class LLMGenerationManager:
             then remove padding from output
         """
         prompt_len = active_batch["input_ids"].shape[1]
-        print(f"active_batch[attention_mask]={active_batch["attention_mask"]}")
+        # print(f"active_batch[attention_mask]={active_batch["attention_mask"]}")
         if self.micro_batch_size <= 1:
             start_time = time.time()
             # output = self.actor.generate(
@@ -220,7 +233,8 @@ class LLMGenerationManager:
             #     "responses": output[:, prompt_len:],
             # }
             sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-            response, _ = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
+            response, _ = ray.get(self.llm.generate_from_tensor.remote(
+                self.clean_padded_tensor(active_batch["input_ids"], active_batch["attention_mask"]), sampling_params))
 
             end_time = time.time()
             print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
@@ -249,7 +263,8 @@ class LLMGenerationManager:
             # output = output.to('cpu')
 
             sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-            response, _ = ray.get(self.llm.generate_from_tensor.remote(active_batch["input_ids"].to('cpu'), sampling_params))
+            response, _ = ray.get(self.llm.generate_from_tensor.remote(
+                self.clean_padded_tensor(active_batch["input_ids"], active_batch["attention_mask"]), sampling_params))
             # log_probs = output[1].to('cpu')
 
             end_time = time.time()
@@ -287,7 +302,8 @@ class LLMGenerationManager:
 
         start_time = time.time()
         sampling_params = SamplingParams(max_tokens=self.g_config.rollout.max_new_token)
-        response, _ = ray.get(self.llm.generate_from_tensor.remote(padded_active_batch["input_ids"].to('cpu'), sampling_params))
+        response, _ = ray.get(self.llm.generate_from_tensor.remote(
+            self.clean_padded_tensor(active_batch["input_ids"], active_batch["attention_mask"]), sampling_params))
 
         end_time = time.time()
         print(f"rank:{torch.distributed.get_rank()} generate：{end_time - start_time:.2f}秒")
