@@ -58,11 +58,11 @@ def init_ray_and_actor(qwen_model_path):
             print(dir(self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model))
             print(f"{self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model}")
             print(f"{self.llm.llm_engine.tokenizer}")
-            print(f"{self.llm.llm_engine.tokenizer.pad_token_id}")
-            print(f"{self.llm.llm_engine.tokenizer.unk_token}")
-            print(f"{self.llm.llm_engine.tokenizer.pad_token}")
-            print(f"{self.llm.llm_engine.tokenizer.eos_token}")
-            print(f"{self.llm.llm_engine.tokenizer.eos_token_id}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer.pad_token_id}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer.unk_token}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer.pad_token}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer.eos_token}")
+            print(f"{self.llm.llm_engine.tokenizer.tokenizer.eos_token_id}")
             self.vllm_model = self.llm.llm_engine.model_executor.driver_worker.worker.model_runner.model
             self.hf_config: PretrainedConfig = self.llm.llm_engine.model_config.hf_config
 
