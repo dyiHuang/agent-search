@@ -202,6 +202,8 @@ class LLMGenerationManager:
         clean_token_lists = []
         mask = mask.to(dtype=torch.bool)
         for seq, seq_mask in zip(padded_tensor, mask):
+            print(f"seq:{seq}")
+            print(f"seq_mask:{seq_mask}")
             # 截断到有效长度，转为列表
             valid_seq = seq[seq_mask is True].tolist()
             clean_token_lists.append(valid_seq)
