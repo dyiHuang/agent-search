@@ -974,10 +974,14 @@ class MegatronDeepSpeedPPOTrainer:
     def _validate(self):
         reward_tensor_lst = []
 
+        i = 0
         for batch in self.val_dataloader:
             input_ids = batch["input_ids"].to('cuda')
             attention_mask = batch["attention_mask"].to('cuda')
             prompt_len = input_ids.shape[1]
+
+            if i > 50:
+                break
 
             # 生成 response（actor模型）
             with torch.no_grad():
@@ -1039,6 +1043,7 @@ class MegatronDeepSpeedPPOTrainer:
                     response = outputs[:, prompt_len:]
                     reward_tensor = self._compute_reward(batch, response)
                     reward_tensor_lst.append(reward_tensor)
+                i += 1
             reward_tensor = torch.cat([rw.sum(-1) for rw in reward_tensor_lst], dim=0).cpu()  # (batch_size,)
             data_source_reward = {}
             for i in range(reward_tensor.shape[0]):
