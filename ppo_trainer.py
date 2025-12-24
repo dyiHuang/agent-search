@@ -787,7 +787,7 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']),
                               global_step=self.global_steps)
-            utils.print_rank_0(f"metrics['actor/ppo_kl']:{metrics['actor/ppo_kl']}, global_step={self.global_steps}")
+            print(f"metrics['actor/ppo_kl']:{metrics['actor/ppo_kl']}, global_step={self.global_steps}")
             writer.add_scalar("train/actor/ppo_kl", np.mean(metrics['actor/ppo_kl']), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_loss", np.mean(metrics['critic/vf_loss']), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']),
