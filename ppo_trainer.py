@@ -794,8 +794,10 @@ class MegatronDeepSpeedPPOTrainer:
                               global_step=self.global_steps)
             writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']),
                               global_step=self.global_steps)
-            writer.add_scalar("val/test_score/doubao_search", metrics['val/test_score/doubao_search'],
-                              global_step=self.global_steps)
+
+            if self.global_steps % self.config.trainer.test_freq == 0:
+                writer.add_scalar("val/test_score/doubao_search", metrics['val/test_score/doubao_search'],
+                                  global_step=self.global_steps)
 
     @staticmethod
     def mask_mean(self, mask, loss, dim=-1):
