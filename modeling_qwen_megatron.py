@@ -1142,9 +1142,9 @@ class Qwen2MegatronModel(MegatronModule):
             policy_loss = pg_loss - entropy_loss * entropy_coeff
             # print(f"responses:{responses[0]}")
             # print(f"response_mask:{response_mask[0]}")
-            # print(f"ref_log_probs:{ref_log_probs[0]}")
-            # print(f"log_prob:{log_prob[0]}")
-            # print(f"advantages:{advantages[0]}")
+            print(f"ref_log_probs:{ref_log_probs[0]}")
+            print(f"log_prob:{log_prob[0]}")
+            print(f"advantages:{advantages.mean(dim=-1)}")
             # print(f"ppo_kl:{ppo_kl}")
             # print(f"pg_loss:{pg_loss}")
             # return loss and stats
