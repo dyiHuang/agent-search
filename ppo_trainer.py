@@ -560,7 +560,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         dataloader = utils.make_iterator(batches, mini_batch_size=self.config.actor.ppo_mini_batch_size,
                                          epochs=self.config.actor.ppo_epochs,
-                                         dataloader_kwargs={'shuffle': self.config.actor.shuffle})
+                                         dataloader_kwargs={'shuffle': False})
         metrics = {}
         for data in dataloader:
             # 模型前向传播
@@ -918,7 +918,7 @@ class MegatronDeepSpeedPPOTrainer:
 
         dataloader = utils.make_iterator(batches, mini_batch_size=self.config.critic.ppo_mini_batch_size,
                                          epochs=self.config.critic.ppo_epochs,
-                                         dataloader_kwargs={'shuffle': self.config.critic.shuffle})
+                                         dataloader_kwargs={'shuffle': False})
         metrics = {}
         for data in dataloader:
             metric_micro_batch = self.critic.forward_backward_batch(batch=data, meta_info=meta_info)
