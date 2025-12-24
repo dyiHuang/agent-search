@@ -980,7 +980,7 @@ class MegatronDeepSpeedPPOTrainer:
             attention_mask = batch["attention_mask"].to('cuda')
             prompt_len = input_ids.shape[1]
 
-            if i > 50:
+            if i > 5:
                 break
 
             # 生成 response（actor模型）
