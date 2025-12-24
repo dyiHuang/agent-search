@@ -371,7 +371,7 @@ class MegatronDeepSpeedPPOTrainer:
                                                                                random_state=42)
         utils.print_rank_0(f"filtered validation dataset size: {len(self.val_dataset.dataframe)}")
 
-        val_sampler = torch.utils.data.distributed.DistributedSampler(self.train_dataset,
+        val_sampler = torch.utils.data.distributed.DistributedSampler(self.val_dataset,
                                                                       num_replicas=data_parallel_world_size,
                                                                       rank=data_parallel_rank,
                                                                       seed=self.config.megatron.seed + data_parallel_rank)
@@ -723,11 +723,6 @@ class MegatronDeepSpeedPPOTrainer:
                 metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
                 metrics.update(metrics_actor)
 
-                # ds tensorboard
-                self.write_ds_scalars(metrics)
-
-                self.logger.log(data=metrics, step=self.global_steps)
-
                 self.global_steps += 1
 
                 if self.global_steps % 100 == 0:
@@ -740,12 +735,23 @@ class MegatronDeepSpeedPPOTrainer:
                 }
 
                 if self.global_steps % self.config.trainer.log_interval == 0:
-                    utils.print_rank_0(f'Final validation metrics: {metrics}')
+                    utils.print_rank_0(f'metrics: {metrics}')
+
+                if self.global_steps % self.config.trainer.save_freq == 0:
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
                     checkpoint_path = f"./ds_checkpoints/critic/"
                     self.critic.save_checkpoint(checkpoint_path, client_state)
+
+                if self.global_steps % self.config.trainer.test_freq == 0:
+                    test_metrics = self._validate()
+                    metrics.update(test_metrics)
+
+                # ds tensorboard
+                self.write_ds_scalars(metrics)
+
+                self.logger.log(data=metrics, step=self.global_steps)
 
                 self.sync_actor_params()
                 end_time = time.time()
@@ -781,11 +787,14 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']),
                               global_step=self.global_steps)
+            utils.print_rank_0(f"metrics['actor/ppo_kl']:{metrics['actor/ppo_kl']}, global_step={self.global_steps}")
             writer.add_scalar("train/actor/ppo_kl", np.mean(metrics['actor/ppo_kl']), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_loss", np.mean(metrics['critic/vf_loss']), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']),
                               global_step=self.global_steps)
             writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']),
+                              global_step=self.global_steps)
+            writer.add_scalar("val/test_score/doubao_search", metrics['val/test_score/doubao_search'],
                               global_step=self.global_steps)
 
     @staticmethod
@@ -961,6 +970,87 @@ class MegatronDeepSpeedPPOTrainer:
         torch.distributed.barrier()
 
         return metrics
+
+    def _validate(self):
+        reward_tensor_lst = []
+
+        for batch in self.val_dataloader:
+            input_ids = batch["input_ids"].to('cuda')
+            attention_mask = batch["attention_mask"].to('cuda')
+            prompt_len = input_ids.shape[1]
+
+            # 生成 response（actor模型）
+            with torch.no_grad():
+                if not self.config.do_search:
+                    outputs = self.actor.generate(
+                        input_ids=input_ids,
+                        max_length=self.config.rollout.max_new_token + prompt_len,
+                        eos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token),
+                        pad_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token),
+                        temperature=self.config.rollout.temperature,
+                        attention_mask=attention_mask,
+                        top_k=self.config.rollout.top_k,
+                    )
+                    batch['prompts'] = batch['input_ids'][:, -self.config.data.max_start_length:].clone().long()
+                    response_mask = self._get_eos_mask(response_id=outputs[:, prompt_len:],
+                                                       eos_token=self.tokenizer.eos_token_id,
+                                                       dtype=attention_mask.dtype)
+                    mask = torch.cat((attention_mask, response_mask), dim=-1).bool()
+                    batch["attention_mask"] = mask
+                    response = outputs[:, prompt_len:]
+                    reward_tensor = self._compute_reward(batch, response)
+                    reward_tensor_lst.append(reward_tensor)
+                else:
+                    # Agent config preparation
+                    gen_config = GenerationConfig(
+                        max_turns=self.config.max_turns,
+                        max_start_length=self.config.data.max_start_length,
+                        max_prompt_length=self.config.data.max_prompt_length,
+                        max_response_length=self.config.data.max_response_length,
+                        max_obs_length=self.config.data.max_obs_length,
+                        num_gpus=self.config.trainer.n_gpus_per_node * self.config.trainer.nnodes,
+                        no_think_rl=self.config.algorithm.no_think_rl,
+                        search_url=self.config.retriever.url,
+                        topk=self.config.retriever.topk,
+                    )
+                    generation_manager = LLMGenerationManager(
+                        tokenizer=self.tokenizer,
+                        actor_model=self.actor,
+                        config=gen_config,
+                        g_config=self.config,
+                        llm=self.llm,
+                    )
+                    first_input_ids = batch['input_ids'][:, -gen_config.max_start_length:].clone().long()
+                    # effective_len = batch['attention_mask'].sum(dim=1).max()
+                    # prompt_len = effective_len
+                    final_gen_batch_output = generation_manager.run_llm_loop(
+                        gen_batch=batch,
+                        initial_input_ids=first_input_ids,
+                    )
+
+                    # final_gen_batch_output.batch.apply(lambda x: x.long(), inplace=True)
+                    for key in final_gen_batch_output[0].keys():
+                        if isinstance(final_gen_batch_output[0][key], torch.Tensor):
+                            final_gen_batch_output[0][key] = final_gen_batch_output[0][key].long()
+                    mask = final_gen_batch_output[0]['attention_mask'].bool()
+                    batch["attention_mask"] = mask
+                    batch['prompts'] = final_gen_batch_output[0]['prompts']
+                    outputs = final_gen_batch_output[0]['input_ids']
+                    response = outputs[:, prompt_len:]
+                    reward_tensor = self._compute_reward(batch, response)
+                    reward_tensor_lst.append(reward_tensor)
+            reward_tensor = torch.cat([rw.sum(-1) for rw in reward_tensor_lst], dim=0).cpu()  # (batch_size,)
+            data_source_reward = {}
+            for i in range(reward_tensor.shape[0]):
+                data_source = 'doubao_search'
+                if data_source not in data_source_reward:
+                    data_source_reward[data_source] = []
+                data_source_reward[data_source].append(reward_tensor[i].item())
+
+            metric_dict = {}
+            for data_source, rewards in data_source_reward.items():
+                metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+            return metric_dict
 
 
 def get_optimizer_param_scheduler(optimizer, config):
