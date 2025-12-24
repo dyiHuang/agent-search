@@ -1145,8 +1145,8 @@ class Qwen2MegatronModel(MegatronModule):
             print(f"ref_log_probs:{ref_log_probs[0]}")
             print(f"log_prob:{log_prob[0]}")
             print(f"advantages:{advantages.mean(dim=-1)}")
-            # print(f"ppo_kl:{ppo_kl}")
-            # print(f"pg_loss:{pg_loss}")
+            print(f"ppo_kl:{ppo_kl}")
+            print(f"pg_loss:{pg_loss}")
             # return loss and stats
             stats = {
                 'actor/entropy_loss': entropy_loss.detach().item(),
