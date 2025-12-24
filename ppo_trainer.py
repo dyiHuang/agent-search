@@ -677,6 +677,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.global_steps = client_state['step']
             self.train_dataloader.sampler.set_epoch(epoch)
             start_index = self.global_steps % len(self.train_dataloader)
+            self.sync_actor_params()
 
         metrics = {}
         for epoch in range(epoch, self.config.trainer.total_epochs):

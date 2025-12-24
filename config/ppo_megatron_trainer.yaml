@@ -29,7 +29,7 @@ deepspeed:
       lr: 2e-7
       betas: [0.9, 0.999]
       eps: 1e-8
-      weight_decay: 0.01
+      weight_decay: 1e-8
 
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
