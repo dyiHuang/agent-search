@@ -740,7 +740,7 @@ class MegatronDeepSpeedPPOTrainer:
                 }
 
                 if self.global_steps % self.config.trainer.log_interval == 0:
-                    utils.print_rank_0(f'Final validation metrics: {val_metrics}')
+                    utils.print_rank_0(f'Final validation metrics: {metrics}')
                     # 保存 checkpoint 到自定义路径
                     checkpoint_path = f"./ds_checkpoints/actor/"
                     self.actor.save_checkpoint(checkpoint_path, client_state)
