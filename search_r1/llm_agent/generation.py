@@ -347,7 +347,7 @@ class LLMGenerationManager:
             rollings_active = {
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
-            if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
+            if parallel_state.get_model_parallel_group().rank() == 0:
                 gen_output = self._generate_with_batch_size_padding(rollings_active)
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
@@ -397,7 +397,7 @@ class LLMGenerationManager:
                 k: v[active_mask] if isinstance(v, torch.Tensor) else v for k, v in rollings.items()
             }
 
-            if parallel_state.get_model_parallel_group().rank() == parallel_state.get_model_parallel_src_rank():
+            if parallel_state.get_model_parallel_group().rank() == 0:
                 gen_output = self._generate_with_batch_size_padding(rollings_active)
                 responses_ids, responses_str = self._postprocess_responses(gen_output['responses'])
                 responses_ids, responses_str = self.tensor_fn.example_level_pad(responses_ids, responses_str,
