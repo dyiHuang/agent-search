@@ -2,6 +2,10 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export ARK_API_KEY=    # for doubao api
 export RAY_ADDRESS=
+export MASTER_ADDR=localhost  # or the IP of rank0 machine
+export MASTER_PORT=6000  # ensure this port is free
+export GLOO_SOCKET_IFNAME=eth0  # 或你的实际接口
+export NCCL_SOCKET_IFNAME=eth0
 
 ray start --address=$RAY_ADDRESS
 
