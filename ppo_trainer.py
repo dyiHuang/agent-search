@@ -136,7 +136,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
         deepspeed.init_distributed(
             dist_backend="nccl",  # GPU 训练必选，CPU 用 "gloo"
-            init_method="env://"  # 从环境变量读取 master_addr/master_port（torchrun 传入）
+            init_method="tcp://10.60.100.172:6000",  # 主节点IP+端口  # 从环境变量读取 master_addr/master_port（torchrun 传入）
         )
 
         # 获取 DeepSpeed 进程信息
