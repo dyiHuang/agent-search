@@ -741,11 +741,7 @@ class MegatronDeepSpeedPPOTrainer:
                     utils.print_rank_0(f'metrics: {metrics}')
 
                 if self.global_steps % self.config.trainer.save_freq == 0:
-                    # 保存 checkpoint 到自定义路径
-                    checkpoint_path = f"./ds_checkpoints/actor/"
-                    self.actor.save_checkpoint(checkpoint_path, client_state)
-                    checkpoint_path = f"./ds_checkpoints/critic/"
-                    self.critic.save_checkpoint(checkpoint_path, client_state)
+                    self.save_checkpoint_with_fsync(client_state)
 
                 if self.global_steps % self.config.trainer.test_freq == 0:
                     test_metrics = self._validate()
@@ -762,12 +758,38 @@ class MegatronDeepSpeedPPOTrainer:
 
                 if self.global_steps >= self.total_training_steps:
                     break
-            # 保存 checkpoint 到自定义路径
-            checkpoint_path = f"./ds_checkpoints/actor/"
-            self.actor.save_checkpoint(checkpoint_path, client_state)
+            self.save_checkpoint_with_fsync(client_state)
 
-            checkpoint_path = f"./ds_checkpoints/critic/"
-            self.critic.save_checkpoint(checkpoint_path, client_state)
+    def save_checkpoint_with_fsync(self, client_state):
+        # 保存 checkpoint 到自定义路径
+        checkpoint_path = f"./ds_checkpoints/actor/"
+        self.actor.save_checkpoint(checkpoint_path, client_state)
+        # 强制刷盘（遍历checkpoint文件执行fsync）
+        for root, dirs, files in os.walk(checkpoint_path):
+            for f in files:
+                fp = os.path.join(root, f)
+                with open(fp, "rb") as f_obj:
+                    os.fsync(f_obj.fileno())
+            for dir1 in dirs:
+                for root1, dirs1, files1 in os.walk(dir1):
+                    for f in files1:
+                        fp = os.path.join(root1, f)
+                        with open(fp, "rb") as f_obj:
+                            os.fsync(f_obj.fileno())
+        checkpoint_path = f"./ds_checkpoints/critic/"
+        self.critic.save_checkpoint(checkpoint_path, client_state)
+        # 强制刷盘（遍历checkpoint文件执行fsync）
+        for root, dirs, files in os.walk(checkpoint_path):
+            for f in files:
+                fp = os.path.join(root, f)
+                with open(fp, "rb") as f_obj:
+                    os.fsync(f_obj.fileno())
+            for dir1 in dirs:
+                for root1, dirs1, files1 in os.walk(dir1):
+                    for f in files1:
+                        fp = os.path.join(root1, f)
+                        with open(fp, "rb") as f_obj:
+                            os.fsync(f_obj.fileno())
 
     def sync_actor_params(self):
         torch.distributed.barrier()
@@ -788,14 +810,19 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/actor/entropy_loss", np.mean(metrics['actor/entropy_loss']),
                               global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_loss", np.mean(metrics['actor/pg_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/pg_loss_abs", np.mean(np.abs(metrics['actor/pg_loss'])), global_step=self.global_steps)
             writer.add_scalar("train/actor/pg_clipfrac", np.mean(metrics['actor/pg_clipfrac']),
                               global_step=self.global_steps)
             print(f"metrics['actor/ppo_kl']:{metrics['actor/ppo_kl']}, global_step={self.global_steps}")
             writer.add_scalar("train/actor/ppo_kl", np.mean(metrics['actor/ppo_kl']), global_step=self.global_steps)
+            writer.add_scalar("train/actor/ppo_kl_abs", np.mean(np.abs(metrics['actor/ppo_kl'])), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_loss", np.mean(metrics['critic/vf_loss']), global_step=self.global_steps)
+            writer.add_scalar("train/critic/vf_loss_abs", np.mean(np.abs(metrics['critic/vf_loss'])), global_step=self.global_steps)
             writer.add_scalar("train/critic/vf_clipfrac", np.mean(metrics['critic/vf_clipfrac']),
                               global_step=self.global_steps)
             writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']),
+                              global_step=self.global_steps)
+            writer.add_scalar("train/critic/vpred_mean_abs", np.mean(np.abs(metrics['critic/vpred_mean'])),
                               global_step=self.global_steps)
 
             if self.global_steps % self.config.trainer.test_freq == 0 and 'val/test_score/doubao_search' in metrics.keys():
