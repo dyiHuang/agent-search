@@ -91,7 +91,7 @@ megatron:
   seed: 1
 
 do_search: True   # online search
-max_turns: 1
+max_turns: 3
 
 actor:
   strategy: megatron  # This is for backward-compatibility
