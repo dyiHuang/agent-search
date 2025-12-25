@@ -436,21 +436,23 @@ class LLMGenerationManager:
     def broadcast_dicts(self, original_right_side, rollings, curr_active_mask):
         torch.distributed.barrier(group=parallel_state.get_model_parallel_group())
         local_rank = parallel_state.get_model_parallel_group().rank()  # 模型并行内的本地rank
+        print(f"[DEBUG] Local rank: {local_rank}")
+        print(f"cuda:{local_rank}")
         self.align_shape(local_rank, rollings)
         self.align_shape(local_rank, original_right_side)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
         curr_active_mask = curr_active_mask.to(device)
-        torch.distributed.broadcast(curr_active_mask, src=0,
+        torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank(),
                                     group=parallel_state.get_model_parallel_group(), async_op=False)
         rollings = {k: v.to(device) for k, v in rollings.items()}
         original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
         torch_functional.broadcast_dict_tensor(
             rollings,
-            src=0,
+            src=parallel_state.get_model_parallel_src_rank(),
             group=parallel_state.get_model_parallel_group())
         torch_functional.broadcast_dict_tensor(
             original_right_side,
-            src=0,
+            src=parallel_state.get_model_parallel_src_rank(),
             group=parallel_state.get_model_parallel_group())
         rollings = {k: v.to('cpu') for k, v in rollings.items()}
         original_right_side = {k: v.to('cpu') for k, v in original_right_side.items()}
@@ -471,7 +473,7 @@ class LLMGenerationManager:
                 shape = None
                 dtype = None
             obj_list = [shape, dtype]
-            torch.distributed.broadcast_object_list(obj_list, src=0,
+            torch.distributed.broadcast_object_list(obj_list, src=parallel_state.get_model_parallel_src_rank(),
                                                     group=parallel_state.get_model_parallel_group())
             shape = obj_list[0]
             dtype = obj_list[1]
