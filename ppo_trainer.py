@@ -674,7 +674,7 @@ class MegatronDeepSpeedPPOTrainer:
                     continue
                 for name, param in layer.named_parameters():
                     print(
-                        f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+                        f"rank:{torch.distributed.get_rank()},layer.{idx}.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
             epoch = client_state['epoch']
             self.global_steps = client_state['step']
             self.train_dataloader.sampler.set_epoch(epoch)
