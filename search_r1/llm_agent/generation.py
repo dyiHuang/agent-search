@@ -440,17 +440,17 @@ class LLMGenerationManager:
         self.align_shape(local_rank, original_right_side)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
         curr_active_mask = curr_active_mask.to(device)
-        torch.distributed.broadcast(curr_active_mask, src=parallel_state.get_model_parallel_src_rank(),
+        torch.distributed.broadcast(curr_active_mask, src=0,
                                     group=parallel_state.get_model_parallel_group(), async_op=False)
         rollings = {k: v.to(device) for k, v in rollings.items()}
         original_right_side = {k: v.to(device) for k, v in original_right_side.items()}
         torch_functional.broadcast_dict_tensor(
             rollings,
-            src=parallel_state.get_model_parallel_src_rank(),
+            src=0,
             group=parallel_state.get_model_parallel_group())
         torch_functional.broadcast_dict_tensor(
             original_right_side,
-            src=parallel_state.get_model_parallel_src_rank(),
+            src=0,
             group=parallel_state.get_model_parallel_group())
         rollings = {k: v.to('cpu') for k, v in rollings.items()}
         original_right_side = {k: v.to('cpu') for k, v in original_right_side.items()}
@@ -461,7 +461,7 @@ class LLMGenerationManager:
     def align_shape(local_rank, tensor_dict):
         for key in sorted(tensor_dict.keys()):
             t = tensor_dict[key]
-            if local_rank == parallel_state.get_model_parallel_src_rank():
+            if local_rank == 0:
                 # 源进程广播张量属性
                 shape = t.shape
                 dtype = t.dtype
@@ -471,11 +471,11 @@ class LLMGenerationManager:
                 shape = None
                 dtype = None
             obj_list = [shape, dtype]
-            torch.distributed.broadcast_object_list(obj_list, src=parallel_state.get_model_parallel_src_rank(),
+            torch.distributed.broadcast_object_list(obj_list, src=0,
                                                     group=parallel_state.get_model_parallel_group())
             shape = obj_list[0]
             dtype = obj_list[1]
-            if local_rank != parallel_state.get_model_parallel_src_rank():
+            if local_rank != 0:
                 # 对齐张量属性
                 new_t = torch.empty(shape, device=t.device, dtype=dtype)
                 new_t[:, :t.shape[1]] = t.to(dtype=dtype)
