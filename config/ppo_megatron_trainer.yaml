@@ -144,7 +144,7 @@ critic:
     override_opt_param_scheduler: False
 
 rollout:
-  max_new_token: 200
+  max_new_token: 190
   temperature: 1.0
   top_k: -1
 
