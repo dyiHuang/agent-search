@@ -670,8 +670,8 @@ class MegatronDeepSpeedPPOTrainer:
                         f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
 
             for idx, layer in enumerate(self.actor.layers):
-                if idx > 2:
-                    break
+                if idx < 9:
+                    continue
                 for name, param in layer.named_parameters():
                     print(
                         f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
