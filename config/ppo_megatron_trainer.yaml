@@ -161,8 +161,8 @@ trainer:
   logger: ['console']
   nnodes: 1
   n_gpus_per_node: 1
-  save_freq: 3
-  test_freq: 3
+  save_freq: 10
+  test_freq: 61
   critic_warmup: 0
   log_interval: 3
 

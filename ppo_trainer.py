@@ -737,15 +737,15 @@ class MegatronDeepSpeedPPOTrainer:
                     "epoch": epoch
                 }
 
-                if self.global_steps % self.config.trainer.log_interval == 0:
-                    utils.print_rank_0(f'metrics: {metrics}')
-
                 if self.global_steps % self.config.trainer.save_freq == 0:
                     self.save_checkpoint_with_fsync(client_state)
 
                 if self.global_steps % self.config.trainer.test_freq == 0:
                     test_metrics = self._validate()
                     metrics.update(test_metrics)
+
+                if self.global_steps % self.config.trainer.log_interval == 0:
+                    print(f'metrics: {metrics}')
 
                 # ds tensorboard
                 self.write_ds_scalars(metrics)

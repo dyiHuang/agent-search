@@ -669,7 +669,7 @@ If I want to give the final answer, I should put the answer between <answer> and
     def batch_search_by_doubao(
             self,
             queries: List[str] = None,
-            max_concurrent: int = 30,  # 最大并发数（核心流控1）
+            max_concurrent: int = 50,  # 最大并发数（核心流控1）
             req_per_second: float = 20.0  # 每秒最大请求数（核心流控2）
     ) -> list[str]:
         """
