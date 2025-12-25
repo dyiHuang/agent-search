@@ -71,9 +71,9 @@ class Qwen2DotProductAttention(DotProductAttention):
 
         sq, b, np, hn = query.size(0), query.size(1), query.size(2), query.size(3)
         # [sq, b, np, hn],[sq, b, gp, hn] -> [b, np, sq, hn],[b, gp, sq, hn]
-        query = query.transpose(0, 1).transpose(1, 2)
-        key = key.transpose(0, 1).transpose(1, 2)
-        value = value.transpose(0, 1).transpose(1, 2)
+        query = query.transpose(0, 1).transpose(1, 2).contiguous()
+        key = key.transpose(0, 1).transpose(1, 2).contiguous()
+        value = value.transpose(0, 1).transpose(1, 2).contiguous()
 
         # utils.print_rank_0(f"dp query - 形状: {query.shape}, 均值: {query.mean():.6f}, 标准差: {query.std():.6f}")
         # utils.print_rank_0(f"dp key - 形状: {key.shape}, 均值: {key.mean():.6f}, 标准差: {key.std():.6f}")
@@ -861,7 +861,7 @@ class Qwen2MegatronModel(MegatronModule):
 
         # -------------------------- 2. 当前 stage 处理自己的 Transformer 层 --------------------------
         if self.pp_rank == 0:
-            hidden_states = hidden_states.transpose(0, 1)
+            hidden_states = hidden_states.transpose(0, 1).contiguous()
         for layer in self.layers:
             # utils.print_rank_0(
             #     f"Qwen2MegatronModel.layer{layer.layer_number} attention_mask={causal_mask_mapping[layer.attention_type]}")
@@ -1129,7 +1129,7 @@ class Qwen2MegatronModel(MegatronModule):
 
             # compute policy loss
             logits = output
-            logits = logits[:, -response_length - 1:-1]
+            logits = logits[:, -response_length - 1:-1].contiguous()
             log_prob = vocab_parallel_log_probs_from_logits(logits, responses)
             # print(
             #     f"rank:{torch.distributed.get_rank()} log_prob NaN: {torch.isnan(log_prob).sum().item()}, Inf: {torch.isinf(log_prob).sum().item()}")
@@ -1876,7 +1876,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                                                        inference_context, seq_len)
 
         if self.pp_rank == 0:
-            hidden_states = hidden_states.transpose(0, 1)
+            hidden_states = hidden_states.transpose(0, 1).contiguous()
         # 计算 Rotary 嵌入（仅 stage 0 计算，传递给后续 stage）
         rotary_pos_emb = self.rotary_emb(hidden_states, position_ids)
 
@@ -1899,7 +1899,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
             value_preds = self.value_head(hidden_states)  # [batch, seq_len, 1]
 
             # [s, b, h] -> [b, s, h]
-            value_preds = value_preds.transpose(1, 0)
+            value_preds = value_preds.transpose(1, 0).contiguous()
 
             # 5. 仅保留最后一个token的价值（PPO核心用法）
             if only_last_token:
