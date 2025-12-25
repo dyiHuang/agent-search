@@ -29,6 +29,9 @@ def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange)
             a float number indicating the fraction of policy gradient loss being clipped
 
     """
+    log_prob = log_prob.float() if log_prob.dtype != torch.float32 else log_prob
+    old_log_prob = old_log_prob.float() if old_log_prob.dtype != torch.float32 else old_log_prob
+    advantages = advantages.float() if advantages.dtype != torch.float32 else advantages
     negative_approx_kl = log_prob - old_log_prob
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = utils.masked_mean(-negative_approx_kl, eos_mask)

@@ -1140,8 +1140,8 @@ class Qwen2MegatronModel(MegatronModule):
                                                                           cliprange=clip_ratio)
             entropy_loss = vocab_parallel_compute_entropy_loss(logits, eos_mask=response_mask)
             policy_loss = pg_loss - entropy_loss * entropy_coeff
-            # print(f"responses:{responses[0]}")
-            # print(f"response_mask:{response_mask[0]}")
+            print(f"responses:{responses[0]}")
+            print(f"response_mask:{response_mask[0]}")
             print(f"ref_log_probs:{ref_log_probs[0]}")
             print(f"log_prob:{log_prob[0]}")
             print(f"advantages:{advantages.mean(dim=-1)}")
