@@ -156,6 +156,8 @@ class MegatronDeepSpeedPPOTrainer:
                 tensor_model_parallel_size=tp_size,
                 pipeline_model_parallel_size=pp_size,
                 virtual_pipeline_model_parallel_size=None,  # RL/微调场景禁用虚拟流水线
+                pipeline_model_parallel_comm_backend="nccl",
+                create_gloo_process_groups=False,
                 order='tp-pp-dp'  # 2-tp 2-pp for megatron 2-dp for deepspeed
             )
 
