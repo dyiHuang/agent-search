@@ -117,8 +117,8 @@ class MegatronDeepSpeedPPOTrainer:
         """初始化 Megatron + Deepspeed 分布式环境"""
         # -------------------------- 步骤 1：解析配置 --------------------------
         # 加载配置
-        os.environ["MASTER_ADDR"] = self.config.megatron.master_addr
-        os.environ["MASTER_PORT"] = str(self.config.megatron.master_port)
+        # os.environ["MASTER_ADDR"] = self.config.megatron.master_addr
+        # os.environ["MASTER_PORT"] = str(self.config.megatron.master_port)
         # os.environ["WORLD_SIZE"] = str(self.config.megatron.tensor_model_parallel_size *
         #                                self.config.megatron.pipeline_model_parallel_size)
         # os.environ["RANK"] = str(self.config.megatron.rank)
@@ -136,7 +136,7 @@ class MegatronDeepSpeedPPOTrainer:
         # 替代原生 torch.distributed.init_process_group，创建全局分布式进程组
         deepspeed.init_distributed(
             dist_backend="nccl",  # GPU 训练必选，CPU 用 "gloo"
-            init_method="tcp://10.60.100.172:6000",  # 主节点IP+端口  # 从环境变量读取 master_addr/master_port（torchrun 传入）
+            init_method="env://"  # 从环境变量读取 master_addr/master_port（torchrun 传入）
         )
 
         # 获取 DeepSpeed 进程信息
