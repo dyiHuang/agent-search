@@ -626,7 +626,9 @@ If I want to give the final answer, I should put the answer between <answer> and
         Returns:
             单个查询的搜索结果，失败返回空字符串
         """
-        if q.strip() == "query" or q.strip() == "and":
+        if q is None:
+            return ""
+        if q.strip().lower() == "query" or q.strip().lower() == "and":
             return ""
         # 流控：请求前延迟，控制每秒请求数
         if req_delay > 0:
