@@ -664,17 +664,7 @@ class MegatronDeepSpeedPPOTrainer:
         start_index = 0
         client_state = utils.extract_step_epoch_from_ckpt_path(load_path)
         if client_state is not None and client_state['step'] > 0:
-            if self.critic.value_head is not None:
-                for name, param in self.critic.value_head.named_parameters():
-                    print(
-                        f"rank:{torch.distributed.get_rank()}, {name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
-
-            for idx, layer in enumerate(self.actor.layers):
-                if idx < 9:
-                    continue
-                for name, param in layer.named_parameters():
-                    print(
-                        f"rank:{torch.distributed.get_rank()},layer.{idx}.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+            self.check_param()
             epoch = client_state['epoch']
             self.global_steps = client_state['step']
             self.train_dataloader.sampler.set_epoch(epoch)
@@ -697,6 +687,7 @@ class MegatronDeepSpeedPPOTrainer:
                         dataloader_iter = iter(self.train_dataloader)
                         break
             for batch_dict in dataloader_iter:
+                self.check_param()
                 start_time = time.time()
                 # 1. Rollout：生成相应并计算 log prob
                 responses, dialogue_ids, ref_log_probs, response_mask, attention_mask = self._rollout(batch_dict)
@@ -759,6 +750,33 @@ class MegatronDeepSpeedPPOTrainer:
                 if self.global_steps >= self.total_training_steps:
                     break
             self.save_checkpoint_with_fsync(client_state)
+
+    def check_param(self):
+        if self.critic.value_head is not None:
+            for name, param in self.critic.value_head.named_parameters():
+                print(
+                    f"rank:{torch.distributed.get_rank()}, value_head.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+        for idx, layer in enumerate(self.actor.layers):
+            if idx < 9:
+                continue
+            for name, param in layer.named_parameters():
+                print(
+                    f"rank:{torch.distributed.get_rank()},layer.{idx}.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+        for name, param in self.actor.final_norm.named_parameters():
+            if param is None:
+                continue
+            print(
+                f"rank:{torch.distributed.get_rank()},final_norm.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+        for name, param in self.actor.lm_head.named_parameters():
+            if param is None:
+                continue
+            print(
+                f"rank:{torch.distributed.get_rank()},lm_head.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
+        for name, param in self.actor.embedding.named_parameters():
+            if param is None:
+                continue
+            print(
+                f"rank:{torch.distributed.get_rank()},embedding.{name} - 均值: {param.mean().item():.6f}, 标准差: {param.std().item():.6f}")
 
     def save_checkpoint_with_fsync(self, client_state):
         # 保存 checkpoint 到自定义路径
