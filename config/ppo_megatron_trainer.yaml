@@ -26,10 +26,10 @@ deepspeed:
   optimizer:
     type: "AdamW"
     params:
-      lr: 1e-6
+      lr: 2e-7
       betas: [0.9, 0.999]
       eps: 1e-8
-      weight_decay: 0.
+      weight_decay: 1e-8
 
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
@@ -106,15 +106,15 @@ actor:
     type: fixed
     kl_coef: 0.001
   optimizer:
-    lr: 1e-6
-    min_lr: 1e-7   # only useful for warmup with cosine
+    lr: 2e-7
+    min_lr: 1e-8   # only useful for warmup with cosine
     lr_decay_steps: 500
     lr_decay_style: cosine  # select from constant/cosine
     clip_grad: 1.0
     lr_warmup_fraction: 0.1  # the total steps will be injected during runtime
     weight_decay_incr_style: linear  # select from constant/cosine
-    start_weight_decay: 0.
-    end_weight_decay: 1e-6
+    start_weight_decay: 1e-8
+    end_weight_decay: 1e-7
     total_training_steps: 1005  # must be override by program
     use_checkpoint_opt_param_scheduler: True
     override_opt_param_scheduler: False
