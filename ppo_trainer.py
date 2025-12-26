@@ -755,31 +755,31 @@ class MegatronDeepSpeedPPOTrainer:
         if self.critic.value_head is not None:
             for name, param in self.critic.value_head.named_parameters():
                 print(
-                    f"rank:{torch.distributed.get_rank()}, value_head.{name} - 均值: {param.float().mean().item():.3g}, 标准差: {param.float().std().item():.3g}")
+                    f"rank:{torch.distributed.get_rank()}, value_head.{name} - 均值: {param.float().mean().item():.4g}, 标准差: {param.float().std().item():.4g}")
         for idx, layer in enumerate(self.actor.layers):
             if idx < 9:
                 continue
             for name, param in layer.named_parameters():
                 print(
-                    f"rank:{torch.distributed.get_rank()},layer.{idx}.{name} - 均值: {param.float().mean().item():.3g}, 标准差: {param.float().std().item():.3g}")
+                    f"rank:{torch.distributed.get_rank()},layer.{idx}.{name} - 均值: {param.float().mean().item():.4g}, 标准差: {param.float().std().item():.4g}")
         if self.actor.final_norm is not None:
             for name, param in self.actor.final_norm.named_parameters():
                 if param is None:
                     continue
                 print(
-                    f"rank:{torch.distributed.get_rank()},final_norm.{name} - 均值: {param.float().mean().item():.3g}, 标准差: {param.float().std().item():.3g}")
+                    f"rank:{torch.distributed.get_rank()},final_norm.{name} - 均值: {param.float().mean().item():.4g}, 标准差: {param.float().std().item():.4g}")
         if self.actor.lm_head is not None:
             for name, param in self.actor.lm_head.named_parameters():
                 if param is None:
                     continue
                 print(
-                    f"rank:{torch.distributed.get_rank()},lm_head.{name} - 均值: {param.float().mean().item():.3g}, 标准差: {param.float().std().item():.3g}")
+                    f"rank:{torch.distributed.get_rank()},lm_head.{name} - 均值: {param.float().mean().item():.4g}, 标准差: {param.float().std().item():.4g}")
         if self.actor.embedding is not None:
             for name, param in self.actor.embedding.named_parameters():
                 if param is None:
                     continue
                 print(
-                    f"rank:{torch.distributed.get_rank()},embedding.{name} - 均值: {param.float().mean().item():.3g}, 标准差: {param.float().std().item():.3g}")
+                    f"rank:{torch.distributed.get_rank()},embedding.{name} - 均值: {param.float().mean().item():.4g}, 标准差: {param.float().std().item():.4g}")
 
     def save_checkpoint_with_fsync(self, client_state):
         # 保存 checkpoint 到自定义路径
