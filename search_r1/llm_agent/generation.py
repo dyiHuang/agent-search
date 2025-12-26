@@ -635,7 +635,7 @@ If I want to give the final answer, I should put the answer between <answer> and
             query_str = f"<search>{q}</search>\n"
             _input = [{
                 "content": (
-                    "检索<search>和</search>之间的内容一次，并用英文直接返回查询到的结果，最多150个token\n"
+                    "联网搜索(Web Search) <search>和</search>之间的内容，最多1次，并用英文直接返回查询到的结果，最多150个token\n"
                     f"{query_str}"
                 ),
                 "role": "user"
