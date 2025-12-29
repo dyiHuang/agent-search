@@ -12,7 +12,7 @@ data:
   val_batch_size: 256
   return_raw_input_ids: False  # This should be set to true when the tokenizer between policy and rm differs
   return_raw_chat: False
-  max_obs_length: 408
+  max_obs_length: 512
   train_data_num: null
   val_data_num: null
   shuffle_train_dataloader: True
@@ -79,7 +79,7 @@ qwen_model_path: Qwen/Qwen2.5-7B # qwen模型hf id
 megatron:
   master_addr: localhost
   master_port: 6000
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 4
   pipeline_model_parallel_size: 2
 #  micro_batch_size: 64
   data_parallel_size: 2
@@ -96,7 +96,7 @@ max_turns: 3
 actor:
   strategy: megatron  # This is for backward-compatibility
   ppo_mini_batch_size: ${actor.ppo_micro_batch_size}  # for update
-  ppo_micro_batch_size: 8  # for search
+  ppo_micro_batch_size: 16  # for search
   clip_ratio: 0.2
   entropy_coeff: 0.001
   ppo_epochs: 1
