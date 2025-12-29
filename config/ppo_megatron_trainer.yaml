@@ -20,7 +20,7 @@ data:
 deepspeed:
   train_batch_size: 256  # 全局 batch 大小（= 单进程 batch * DP_SIZE）
   train_micro_batch_size_per_gpu: ${actor.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
-  gradient_accumulation_steps: 32  # 梯度累积步数（RL 场景常用 1，避免延迟）
+  gradient_accumulation_steps: 16  # 梯度累积步数（RL 场景常用 1，避免延迟）
   gradient_clipping: 1.0  # 梯度裁剪阈值
 
   optimizer:
