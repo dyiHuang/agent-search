@@ -534,7 +534,8 @@ class LLMGenerationManager:
 
         search_queries = [content for action, content in zip(cur_actions, contents) if action == 'search']
         if do_search:
-            search_results = self.batch_search_by_doubao(search_queries)
+            search_results = self.batch_search(search_queries)
+            # search_results = self.batch_search_by_doubao(search_queries)
             assert len(search_results) == sum([1 for action in cur_actions if action == 'search'])
         else:
             search_results = [''] * sum([1 for action in cur_actions if action == 'search'])

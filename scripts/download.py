@@ -7,8 +7,19 @@ parser.add_argument("--save_path", type=str, required=True, help="Local director
     
 args = parser.parse_args()
 
-repo_id = "PeterJinGo/nq_hotpotqa_train"
-for file in ["train.parquet", "test.parquet"]:
+# repo_id = "PeterJinGo/nq_hotpotqa_train"
+# for file in ["train.parquet", "test.parquet"]:
+#     hf_hub_download(
+#         repo_id=repo_id,
+#         filename=file,  # e.g., "e5_Flat.index"
+#         repo_type="dataset",
+#         local_dir=args.save_path,
+#     )
+
+
+
+repo_id = "PeterJinGo/wiki-18-e5-index"
+for file in ["part_aa", "part_ab"]:
     hf_hub_download(
         repo_id=repo_id,
         filename=file,  # e.g., "e5_Flat.index"
@@ -16,21 +27,10 @@ for file in ["train.parquet", "test.parquet"]:
         local_dir=args.save_path,
     )
 
-
-#
-# repo_id = "PeterJinGo/wiki-18-e5-index"
-# for file in ["part_aa", "part_ab"]:
-#     hf_hub_download(
-#         repo_id=repo_id,
-#         filename=file,  # e.g., "e5_Flat.index"
-#         repo_type="dataset",
-#         local_dir=args.save_path,
-#     )
-#
-# repo_id = "PeterJinGo/wiki-18-corpus"
-# hf_hub_download(
-#         repo_id=repo_id,
-#         filename="wiki-18.jsonl.gz",
-#         repo_type="dataset",
-#         local_dir=args.save_path,
-# )
+repo_id = "PeterJinGo/wiki-18-corpus"
+hf_hub_download(
+        repo_id=repo_id,
+        filename="wiki-18.jsonl.gz",
+        repo_type="dataset",
+        local_dir=args.save_path,
+)
