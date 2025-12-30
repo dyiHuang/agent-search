@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 from typing import Dict
 
@@ -741,6 +742,7 @@ class MegatronDeepSpeedPPOTrainer:
 
                 # ds tensorboard
                 metrics['critic/score/mean'] = rewards.sum(-1)
+                metrics['actor/response_length'] = response_mask.sum(-1)
                 self.write_ds_scalars(metrics)
 
                 self.logger.log(data=metrics, step=self.global_steps)
@@ -799,6 +801,7 @@ class MegatronDeepSpeedPPOTrainer:
                         fp = os.path.join(root1, f)
                         with open(fp, "rb") as f_obj:
                             os.fsync(f_obj.fileno())
+        self.rm_last_checkpoint(checkpoint_path, client_state)
         checkpoint_path = f"./ds_checkpoints/critic/"
         self.critic.save_checkpoint(checkpoint_path, client_state)
         # 强制刷盘（遍历checkpoint文件执行fsync）
@@ -813,6 +816,25 @@ class MegatronDeepSpeedPPOTrainer:
                         fp = os.path.join(root1, f)
                         with open(fp, "rb") as f_obj:
                             os.fsync(f_obj.fileno())
+        self.rm_last_checkpoint(checkpoint_path, client_state)
+
+    def rm_last_checkpoint(self, checkpoint_path, client_state):
+        last_client_state = client_state.copy()
+        last_client_state['step'] = last_client_state['step'] - self.config.trainer.save_freq
+        last_client_state['epoch'] = last_client_state['step'] // len(self.train_dataset)
+        target_folder = checkpoint_path + str(last_client_state)
+        # 第一步：检查文件夹是否存在（使用os.path.isdir精准判断是否为文件夹）
+        if os.path.isdir(target_folder):
+            try:
+                # 第二步：若存在，递归删除文件夹及其中所有内容（文件+子文件夹）
+                shutil.rmtree(target_folder)
+                print(f"成功删除文件夹：{target_folder} 及其内所有内容")
+            except Exception as e:
+                # 捕获删除异常（如权限不足、文件夹被占用等）
+                print(f"删除文件夹 {target_folder} 失败，错误信息：{e}")
+        else:
+            # 文件夹不存在时的提示
+            print(f"文件夹 {target_folder} 不存在，无需删除")
 
     def sync_actor_params(self):
         torch.distributed.barrier()
@@ -848,6 +870,9 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/critic/vpred_mean_abs", np.mean(np.abs(metrics['critic/vpred_mean'])),
                               global_step=self.global_steps)
             writer.add_scalar("train/critic/score/mean", torch.mean(metrics['critic/score/mean']).detach().item(),
+                              global_step=self.global_steps)
+            writer.add_scalar("train/actor/response_length/mean",
+                              torch.mean(metrics['actor/response_length']).detach().item(),
                               global_step=self.global_steps)
 
             if self.global_steps % self.config.trainer.test_freq == 0 and 'val/test_score/doubao_search' in metrics.keys():
