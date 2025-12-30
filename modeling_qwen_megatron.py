@@ -265,15 +265,26 @@ class Qwen2MegatronAttention(SelfAttention):
         # ==================================
 
         nvtx_range_push(suffix="core_attention")
-        core_attn_out = self.core_attention(
-            query,
-            key,
-            value,
-            attention_mask,
-            attn_mask_type=None,
-            attention_bias=attention_bias,
-            packed_seq_params=packed_seq_params,
-        )
+        if self.checkpoint_core_attention and self.training:
+            core_attn_out = self._checkpointed_attention_forward(
+                query,
+                key,
+                value,
+                attention_mask,
+                attn_mask_type=attn_mask_type,
+                attention_bias=attention_bias,
+                packed_seq_params=packed_seq_params,
+            )
+        else:
+            core_attn_out = self.core_attention(
+                query,
+                key,
+                value,
+                attention_mask,
+                attn_mask_type=None,
+                attention_bias=attention_bias,
+                packed_seq_params=packed_seq_params,
+            )
         nvtx_range_pop(suffix="core_attention")
 
         # =================
@@ -2036,6 +2047,7 @@ def build_qwen2_megatron_model(config, tokenizer, qwen_model_path: str, lora_con
         attention_dropout=qwen_config.attention_dropout,
         hidden_dropout=0.0,
         attention_softmax_in_fp32=True,
+        recompute_granularity='selective',
     )
     utils.print_rank_0(f"megatron TransformerConfig: {megatron_config}")
     # 加载预训练权重（Hugging Face -> Megatron 格式映射）
