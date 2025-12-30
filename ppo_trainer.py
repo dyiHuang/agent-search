@@ -717,6 +717,7 @@ class MegatronDeepSpeedPPOTrainer:
                 metrics_actor = self._update_policy(ref_log_probs, dialogue_ids, responses, advantages, attention_mask)
                 metrics.update(metrics_actor)
 
+
                 self.global_steps += 1
 
                 if self.global_steps % 100 == 0:
@@ -739,6 +740,7 @@ class MegatronDeepSpeedPPOTrainer:
                     print(f'metrics: {metrics}')
 
                 # ds tensorboard
+                metrics['critic/score/mean'] = rewards.sum(-1)
                 self.write_ds_scalars(metrics)
 
                 self.logger.log(data=metrics, step=self.global_steps)
@@ -844,6 +846,8 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/critic/vpred_mean", np.mean(metrics['critic/vpred_mean']),
                               global_step=self.global_steps)
             writer.add_scalar("train/critic/vpred_mean_abs", np.mean(np.abs(metrics['critic/vpred_mean'])),
+                              global_step=self.global_steps)
+            writer.add_scalar("train/critic/score/mean", torch.mean(metrics['critic/score/mean']).detach().item(),
                               global_step=self.global_steps)
 
             if self.global_steps % self.config.trainer.test_freq == 0 and 'val/test_score/doubao_search' in metrics.keys():
