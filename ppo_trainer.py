@@ -872,7 +872,7 @@ class MegatronDeepSpeedPPOTrainer:
             writer.add_scalar("train/critic/score/mean", torch.mean(metrics['critic/score/mean']).detach().item(),
                               global_step=self.global_steps)
             writer.add_scalar("train/actor/response_length/mean",
-                              torch.mean(metrics['actor/response_length']).detach().item(),
+                              torch.mean(metrics['actor/response_length'].float()).detach().item(),
                               global_step=self.global_steps)
 
             if self.global_steps % self.config.trainer.test_freq == 0 and 'val/test_score/doubao_search' in metrics.keys():
