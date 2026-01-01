@@ -55,6 +55,33 @@ deepspeed:
   bf16:  # 混合精度配置（与 megatron-core 统一）
     enabled: True # 启用 BF16（推荐，与 megatron-core 兼容）
 
+#  # 优化器配置（DeepSpeed 管理优化器，替代原生 PyTorch 优化器）
+#  optimizer:
+#    type: AdamW
+#    params:  # 禁用 FP16
+#      lr: 1e-5  #
+#      weight_decay: 0.01  #
+#      betas: [0.9, 0.95]  #
+  # 激活值检查点（与 megatron-core 配合，减少显存占用）
+  activation_checkpointing:
+    enabled: True
+    partition_activations: True # 与 TP 兼容，激活值按 TP 分片存储
+    contiguous_memory_optimization: True
+
+  tensorboard:
+    enabled: True
+    output_path: ./ds_tensorboard_logs/
+    job_name: agent_search_tensorboard
+
+  # 日志与 checkpoint 配置
+  steps_per_print: 10
+  checkpoint:
+    writer:
+      type: python
+      data_parallel: REPLICA
+    use_node_local_storage: True
+    path: ./checkpoints
+
 deepspeed_critic:
   train_batch_size: 256  # 全局 batch 大小（= 单进程 batch * DP_SIZE）
   train_micro_batch_size_per_gpu: ${actor.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
