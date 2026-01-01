@@ -210,11 +210,12 @@ class MegatronDeepSpeedPPOTrainer:
         # 将 config.deepspeed 转换为 dict
         # resolve=True 表示在转换前解析所有变量插值
         deepspeed_dict = OmegaConf.to_container(self.config.deepspeed, resolve=True)
+        deepspeed_critic_dict = OmegaConf.to_container(self.config.deepspeed_critic, resolve=True)
 
         critic_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.critic.optimizer),
                                                   model_chunks=[self.critic])
-        critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
-                                                                   config=self.config.critic.optimizer)
+        # critic_opt_param_scheduler = get_optimizer_param_scheduler(critic_optimizer,
+        #                                                            config=self.config.critic.optimizer)
         assert isinstance(critic_optimizer, ChainedOptimizer)
 
         # 1. 过滤掉空的 param_groups
@@ -235,7 +236,7 @@ class MegatronDeepSpeedPPOTrainer:
             self.critic, _, _, _ = deepspeed.initialize(
                 model=self.critic,
                 # optimizer=critic_optimizer.optimizer,
-                config=deepspeed_dict,
+                config=deepspeed_critic_dict,
                 # lr_scheduler=critic_opt_param_scheduler,
                 mpu=parallel_state_proxy_critic,
                 model_parameters=self.critic.parameters()
@@ -245,8 +246,8 @@ class MegatronDeepSpeedPPOTrainer:
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
                 optimizer=critic_optimizer.optimizer,
-                config=deepspeed_dict,
-                lr_scheduler=critic_opt_param_scheduler,
+                config=deepspeed_critic_dict,
+                # lr_scheduler=critic_opt_param_scheduler,
                 mpu=parallel_state_proxy_critic,
                 # model_parameters=self.critic.parameters()
             )
@@ -272,10 +273,10 @@ class MegatronDeepSpeedPPOTrainer:
                                                               local_rank=parallel_state.get_model_parallel_group().rank(),
                                                               pure_dp=True))
 
-        actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
-                                                 model_chunks=[self.actor])
-        opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
-        assert isinstance(actor_optimizer, ChainedOptimizer)
+        # actor_optimizer = get_megatron_optimizer(config=init_megatron_optim_config(self.config.actor.optimizer),
+        #                                          model_chunks=[self.actor])
+        # opt_param_scheduler = get_optimizer_param_scheduler(actor_optimizer, config=self.config.actor.optimizer)
+        # assert isinstance(actor_optimizer, ChainedOptimizer)
 
         # # 核心修复：强制开启所有参数的 requires_grad
         # for group in actor_optimizer.optimizer.param_groups:
@@ -306,7 +307,7 @@ class MegatronDeepSpeedPPOTrainer:
             model=self.actor,
             config=deepspeed_dict,
             mpu=parallel_state_proxy,
-            lr_scheduler=opt_param_scheduler,
+            # lr_scheduler=opt_param_scheduler,
             model_parameters=self.actor.parameters()
         )
         print(
@@ -801,7 +802,6 @@ class MegatronDeepSpeedPPOTrainer:
                         fp = os.path.join(root1, f)
                         with open(fp, "rb") as f_obj:
                             os.fsync(f_obj.fileno())
-        self.rm_last_checkpoint(checkpoint_path, client_state)
         checkpoint_path = f"./ds_checkpoints/critic/"
         self.critic.save_checkpoint(checkpoint_path, client_state)
         # 强制刷盘（遍历checkpoint文件执行fsync）
@@ -816,9 +816,13 @@ class MegatronDeepSpeedPPOTrainer:
                         fp = os.path.join(root1, f)
                         with open(fp, "rb") as f_obj:
                             os.fsync(f_obj.fileno())
-        self.rm_last_checkpoint(checkpoint_path, client_state)
+        torch.distributed.barrier()
+        self.rm_last_checkpoint(f"./ds_checkpoints/actor/", client_state)
+        self.rm_last_checkpoint(f"./ds_checkpoints/critic/", client_state)
 
     def rm_last_checkpoint(self, checkpoint_path, client_state):
+        if torch.distributed.get_rank() != 0:
+            return
         last_client_state = client_state.copy()
         last_client_state['step'] = last_client_state['step'] - self.config.trainer.save_freq
         last_client_state['epoch'] = last_client_state['step'] // len(self.train_dataset)

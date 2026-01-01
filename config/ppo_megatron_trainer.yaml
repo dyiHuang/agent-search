@@ -31,6 +31,49 @@ deepspeed:
       eps: 1e-8
       weight_decay: 1e-8
 
+  scheduler:
+    type: "WarmupLR"
+    params:
+      warmup_max_lr: 2e-7
+      warmup_num_steps: 283
+
+
+  zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
+    stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
+    offload_optimizer:
+      device: none  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
+    offload_param:
+      device: none
+    overlap_comm: True  # 通信与计算重叠（加速训练）
+    contiguous_gradients: True  # 连续梯度（减少内存碎片）
+    ignore_unused_parameters: True
+    allgather_partitions: True  # 关键：聚合梯度到分片
+
+  fp16:  # 混合精度配置（与 megatron-core 统一）
+    enabled: False  # 禁用 FP16
+  bf16:  # 混合精度配置（与 megatron-core 统一）
+    enabled: True # 启用 BF16（推荐，与 megatron-core 兼容）
+
+deepspeed_critic:
+  train_batch_size: 256  # 全局 batch 大小（= 单进程 batch * DP_SIZE）
+  train_micro_batch_size_per_gpu: ${actor.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
+  gradient_accumulation_steps: 32  # 梯度累积步数（RL 场景常用 1，避免延迟）
+  gradient_clipping: 1.0  # 梯度裁剪阈值
+
+  optimizer:
+    type: "AdamW"
+    params:
+      lr: 2e-7
+      betas: [0.9, 0.999]
+      eps: 1e-8
+      weight_decay: 1e-8
+
+  scheduler:
+    type: "WarmupLR"
+    params:
+      warmup_max_lr: 1e-5
+      warmup_num_steps: 15
+
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
     offload_optimizer:
