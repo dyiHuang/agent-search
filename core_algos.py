@@ -71,7 +71,7 @@ def compute_value_loss(vpreds, returns, values, eos_mask, cliprange_value):
 
 
 def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torch.Tensor, eos_mask: torch.Tensor,
-                                 gamma: torch.Tensor = torch.tensor(0.99), lam: torch.Tensor = torch.tensor(0.95)):
+                                 gamma: torch.Tensor = torch.tensor(1.0), lam: torch.Tensor = torch.tensor(1.0)):
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py
 
     Args:
