@@ -42,7 +42,7 @@ deepspeed:
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
     offload_optimizer:
-      device: none  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
+      device: "cpu"  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
     offload_param:
       device: none
     overlap_comm: True  # 通信与计算重叠（加速训练）
@@ -106,7 +106,7 @@ deepspeed_critic:
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
     offload_optimizer:
-      device: none  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
+      device: "cpu"  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
     offload_param:
       device: none
     overlap_comm: True  # 通信与计算重叠（加速训练）
