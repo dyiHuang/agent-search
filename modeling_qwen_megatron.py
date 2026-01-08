@@ -750,6 +750,7 @@ class Qwen2MegatronModel(MegatronModule):
         self.num_layers = qwen_config.num_hidden_layers
         self.tp_size = megatron_config.tensor_model_parallel_size
         self.micro_batch_size = g_config.actor.ppo_micro_batch_size
+        self.scaling_factor = g_config.deepspeed.gradient_accumulation_steps
         self.pp_size = parallel_state.get_pipeline_model_parallel_world_size()  # 获取 PP 总进程数
         self.pp_rank = parallel_state.get_pipeline_model_parallel_rank()  # 当前 PP stage 编号（0~pp_size-1）
 
@@ -1167,6 +1168,7 @@ class Qwen2MegatronModel(MegatronModule):
             }
             # print(f"rank:{torch.distributed.get_rank()} policy_loss: {policy_loss.item()}")
             # print(f"rank:{torch.distributed.get_rank()} stats: {stats}")
+            policy_loss = policy_loss / self.scaling_factor
             return policy_loss, stats
 
         def forward_step(batch_iter, model):
@@ -1776,6 +1778,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
         # 调用父类初始化（复用嵌入层、Transformer层、LayerNorm等）
         super().__init__(g_config=g_config, qwen_config=qwen_config, megatron_config=megatron_config)
         self.micro_batch_size = g_config.critic.ppo_micro_batch_size
+        self.scaling_factor = g_config.deepspeed_critic.gradient_accumulation_steps
         self.freeze_actor_backbone = freeze_actor_backbone
 
         # 2. 价值输出头（兼容TP并行）
@@ -1971,6 +1974,7 @@ class Qwen2MegatronCritic(Qwen2MegatronModel):
                 'critic/vpred_mean': utils.masked_mean(vpreds, eos_mask).detach().item(),
             }
 
+            vf_loss = vf_loss / self.scaling_factor
             return vf_loss, stats
 
         def forward_step(batch_iter, model):
