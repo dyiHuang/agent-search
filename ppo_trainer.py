@@ -45,6 +45,14 @@ from vllm import LLM, SamplingParams
 # 初始化 Writer（指定日志目录）
 writer = SummaryWriter(log_dir="./ds_tensorboard_logs/agent_search_tensorboard")
 
+# 预先编译CPU Adam扩展
+from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.op_builder import CPUAdamBuilder
+
+# 确保扩展已经编译
+if not CPUAdamBuilder().is_compatible():
+    CPUAdamBuilder().load()
+
 
 class MegatronDeepSpeedPPOTrainer:
     def __init__(self, config):
