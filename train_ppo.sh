@@ -6,6 +6,10 @@ export MASTER_ADDR=localhost  # or the IP of rank0 machine
 export MASTER_PORT=6000  # ensure this port is free
 export GLOO_SOCKET_IFNAME=eth0  # 或你的实际接口
 export NCCL_SOCKET_IFNAME=eth0
+export OMP_NUM_THREADS=32
+export MKL_NUM_THREADS=32
+export NCCL_ASYNC_ERROR_HANDLING=1
+export NCCL_NSOCKS_PERTHREAD=8
 
 ray start --address=$RAY_ADDRESS
 
