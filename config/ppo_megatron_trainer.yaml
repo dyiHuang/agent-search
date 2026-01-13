@@ -91,7 +91,7 @@ deepspeed_critic:
   optimizer:
     type: "AdamW"
     params:
-      lr: 2e-7
+      lr: 1e-5
       betas: [0.9, 0.999]
       eps: 1e-8
       weight_decay: 1e-8
@@ -100,13 +100,13 @@ deepspeed_critic:
     type: "WarmupLR"
     params:
       warmup_max_lr: 1e-5
-      warmup_num_steps: 15
+      warmup_num_steps: 150
       warmup_type: "linear"
 
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
     stage: 2  # 0=禁用，1=优化器状态分片，2=优化器+梯度分片，3=优化器+梯度+参数分片
     offload_optimizer:
-      device: none  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
+      device: "cpu"  # 禁用 CPU 卸载（TP 场景下 GPU 卸载更高效）
     offload_param:
       device: none
     overlap_comm: True  # 通信与计算重叠（加速训练）

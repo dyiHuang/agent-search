@@ -253,11 +253,11 @@ class MegatronDeepSpeedPPOTrainer:
             critic_optimizer.optimizer.param_groups = filtered_param_groups_critic
             self.critic, self.critic_optimizer, _, _ = deepspeed.initialize(
                 model=self.critic,
-                optimizer=critic_optimizer.optimizer,
+                # optimizer=critic_optimizer.optimizer,
                 config=deepspeed_critic_dict,
                 # lr_scheduler=critic_opt_param_scheduler,
                 mpu=parallel_state_proxy_critic,
-                # model_parameters=self.critic.parameters()
+                model_parameters=self.critic.parameters()
             )
 
             # if parallel_state.is_pipeline_last_stage():
