@@ -20,7 +20,7 @@ data:
 deepspeed:
   train_batch_size: 256  # 全局 batch 大小（= 单进程 batch * DP_SIZE）
   train_micro_batch_size_per_gpu: ${actor.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
-  gradient_accumulation_steps: 16  # 梯度累积步数（RL 场景常用 1，避免延迟）
+  gradient_accumulation_steps: 8  # 梯度累积步数（RL 场景常用 1，避免延迟）
   gradient_clipping: 1.0  # 梯度裁剪阈值
 
   optimizer:
@@ -84,8 +84,8 @@ deepspeed:
 
 deepspeed_critic:
   train_batch_size: 256  # 全局 batch 大小（= 单进程 batch * DP_SIZE）
-  train_micro_batch_size_per_gpu: ${actor.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
-  gradient_accumulation_steps: 16  # 梯度累积步数（RL 场景常用 1，避免延迟）
+  train_micro_batch_size_per_gpu: ${critic.ppo_micro_batch_size}  # 单 GPU 微批大小（需满足：train_batch_size = 微批 * DP_SIZE * 梯度累积步数）,Np=4
+  gradient_accumulation_steps: 32  # 梯度累积步数（RL 场景常用 1，避免延迟）
   gradient_clipping: 1.0  # 梯度裁剪阈值
 
   optimizer:
@@ -146,7 +146,7 @@ deepspeed_critic:
     use_node_local_storage: True
     path: ./checkpoints
 
-qwen_model_path: Qwen/Qwen2.5-7B # qwen模型hf id
+qwen_model_path: Qwen/Qwen2.5-3B # qwen模型hf id
 
 megatron:
   master_addr: localhost
@@ -167,7 +167,7 @@ max_turns: 2
 actor:
   strategy: megatron  # This is for backward-compatibility
   ppo_mini_batch_size: ${actor.ppo_micro_batch_size}  # for update
-  ppo_micro_batch_size: 16  # for search
+  ppo_micro_batch_size: 32  # for search
   clip_ratio: 0.2
   entropy_coeff: 0.001
   ppo_epochs: 1
@@ -192,8 +192,8 @@ actor:
 
 critic:
   load_weight: True
-  ppo_mini_batch_size: ${actor.ppo_mini_batch_size}
-  ppo_micro_batch_size: ${actor.ppo_micro_batch_size}
+  ppo_mini_batch_size: 8
+  ppo_micro_batch_size: 8
   ppo_epochs: ${actor.ppo_epochs}
   shuffle: ${actor.shuffle}
   cliprange_value: 0.5
