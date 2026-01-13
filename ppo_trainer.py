@@ -1068,15 +1068,10 @@ class MegatronDeepSpeedPPOTrainer:
     def _validate(self):
         reward_tensor_lst = []
 
-        i = 0
         for batch in self.val_dataloader:
             input_ids = batch["input_ids"].to('cuda')
             attention_mask = batch["attention_mask"].to('cuda')
             prompt_len = input_ids.shape[1]
-
-            if i > 5:
-                break
-
             # 生成 response（actor模型）
             with torch.no_grad():
                 if not self.config.do_search:
@@ -1137,19 +1132,19 @@ class MegatronDeepSpeedPPOTrainer:
                     response = outputs[:, prompt_len:]
                     reward_tensor = self._compute_reward(batch, response)
                     reward_tensor_lst.append(reward_tensor)
-                i += 1
-            reward_tensor = torch.cat([rw.sum(-1) for rw in reward_tensor_lst], dim=0).cpu()  # (batch_size,)
-            data_source_reward = {}
-            for i in range(reward_tensor.shape[0]):
-                data_source = 'doubao_search'
-                if data_source not in data_source_reward:
-                    data_source_reward[data_source] = []
-                data_source_reward[data_source].append(reward_tensor[i].item())
 
-            metric_dict = {}
-            for data_source, rewards in data_source_reward.items():
-                metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
-            return metric_dict
+        reward_tensor = torch.cat([rw.sum(-1) for rw in reward_tensor_lst], dim=0).cpu()  # (batch_size,)
+        data_source_reward = {}
+        for i in range(reward_tensor.shape[0]):
+            data_source = 'doubao_search'
+            if data_source not in data_source_reward:
+                data_source_reward[data_source] = []
+            data_source_reward[data_source].append(reward_tensor[i].item())
+
+        metric_dict = {}
+        for data_source, rewards in data_source_reward.items():
+            metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+        return metric_dict
 
 
 def get_optimizer_param_scheduler(optimizer, config):
