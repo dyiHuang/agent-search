@@ -1,5 +1,5 @@
-#export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+#export CUDA_VISIBLE_DEVICES=0,1,2,3
 export ARK_API_KEY=    # for doubao api
 export RAY_ADDRESS=
 export MASTER_ADDR=localhost  # or the IP of rank0 machine
@@ -13,7 +13,7 @@ export NCCL_NSOCKS_PERTHREAD=8
 
 ray start --address=$RAY_ADDRESS
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 MASTER_ADDR=localhost
 MASTER_PORT=6000
 NNODES=1
