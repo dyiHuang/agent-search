@@ -120,14 +120,11 @@ class LLMGenerationManager:
                               next_obs_ids: torch.Tensor) -> Dict:
         """Update rolling state with new responses and observations."""
         # Concatenate and handle padding        
-        resp = self.tensor_fn.concatenate_with_padding([
+        new_input_ids = self.tensor_fn.concatenate_with_padding([
+            rollings['input_ids'],
             cur_responses,
             next_obs_ids,
         ], pad_to_left=False)
-        new_input_ids = self.tensor_fn.concatenate_with_no_padding([
-            rollings['input_ids'],
-            resp
-        ])
 
         # Create attention mask and position ids
         new_attention_mask = self.tensor_fn.create_attention_mask(new_input_ids)
@@ -138,9 +135,9 @@ class LLMGenerationManager:
         max_len = min(self.config.max_response_length, effective_len)
 
         new_rollings = {
-            'input_ids': new_input_ids[:, -max_len:],
+            'input_ids': new_input_ids[:, :max_len],
             # 'position_ids': new_position_ids[:, -max_len:].to('cuda'),
-            'attention_mask': new_attention_mask[:, -max_len:]
+            'attention_mask': new_attention_mask[:, :max_len]
         }
 
         return new_rollings
