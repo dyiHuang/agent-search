@@ -1133,11 +1133,13 @@ class Qwen2MegatronModel(MegatronModule):
             # print(f"rank:{torch.distributed.get_rank()} responses NaN: {torch.isnan(responses).sum().item()}, Inf: {torch.isinf(responses).sum().item()}")
             # print(f"rank:{torch.distributed.get_rank()} ref_log_probs NaN: {torch.isnan(ref_log_probs).sum().item()}, Inf: {torch.isinf(ref_log_probs).sum().item()}")
 
-            clip_ratio = 0.2
-            entropy_coeff = 0.1
-            if not meta_info:
-                clip_ratio = meta_info['clip_ratio']
-                entropy_coeff = meta_info['entropy_coeff']
+            # 从 meta_info 中读取 PPO 超参（如未提供则使用合理默认值）
+            if meta_info is not None:
+                clip_ratio = meta_info.get('clip_ratio', 0.2)
+                entropy_coeff = meta_info.get('entropy_coeff', 0.1)
+            else:
+                clip_ratio = 0.2
+                entropy_coeff = 0.1
 
             # compute policy loss
             logits = output
