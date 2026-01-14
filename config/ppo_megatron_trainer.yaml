@@ -233,7 +233,7 @@ trainer:
   nnodes: 1
   n_gpus_per_node: 1
   save_freq: 10
-  test_freq: 61
+  test_freq: 100
   critic_warmup: 0
   log_interval: 3
 
