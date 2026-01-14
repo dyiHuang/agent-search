@@ -742,10 +742,6 @@ class MegatronDeepSpeedPPOTrainer:
                 if self.global_steps % self.config.trainer.save_freq == 0:
                     self.save_checkpoint_with_fsync(client_state)
 
-                if self.global_steps % self.config.trainer.test_freq == 0:
-                    test_metrics = self._validate()
-                    metrics.update(test_metrics)
-
                 if self.global_steps % self.config.trainer.log_interval == 0:
                     print(f'metrics: {metrics}')
 
@@ -759,6 +755,10 @@ class MegatronDeepSpeedPPOTrainer:
                 self.sync_actor_params()
                 end_time = time.time()
                 print(f"rank:{torch.distributed.get_rank()} step：{self.global_steps} time: {end_time - start_time:.2f}秒")
+
+                if self.global_steps % self.config.trainer.test_freq == 0:
+                    test_metrics = self._validate()
+                    metrics.update(test_metrics)
 
                 if self.global_steps >= self.total_training_steps:
                     break
