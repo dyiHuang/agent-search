@@ -778,6 +778,8 @@ If I want to give the final answer, I should put the answer between <answer> and
     def _passages2string(self, retrieval_result):
         format_reference = ''
         for idx, doc_item in enumerate(retrieval_result):
+            if idx >= self.config.topk:
+                break
             if isinstance(doc_item, dict):
                 # 场景：document是字典，取contents
                 content = doc_item['document']['contents']
