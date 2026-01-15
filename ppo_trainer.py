@@ -615,7 +615,7 @@ class MegatronDeepSpeedPPOTrainer:
             if self.config.actor.ppo_mini_batch_size == self.config.actor.ppo_micro_batch_size:
                 self.actor.allreduce_gradients()
 
-            self.actor.step(lr_kwargs={'increment': increment})
+            self.actor.step(lr_kwargs={'last_batch_iteration': self.global_steps})
 
             update_successful = self.actor.was_step_applied()
             print(f"actor update_successful:{update_successful}, increment:{increment}")
@@ -1052,7 +1052,7 @@ class MegatronDeepSpeedPPOTrainer:
                 self.critic.allreduce_gradients()
                 # print(
                 # f"当前进程 {torch.distributed.get_rank()}-self.critic_optimizer.averaged_gradients的keys：{list(self.critic_optimizer.averaged_gradients.keys())}")
-                self.critic.step(lr_kwargs={'increment': increment})
+                self.critic.step(lr_kwargs={'last_batch_iteration': self.global_steps})
 
                 update_successful = self.critic.was_step_applied()
                 print(f"critic update_successful:{update_successful}, increment:{increment}")

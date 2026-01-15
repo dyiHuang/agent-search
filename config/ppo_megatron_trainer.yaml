@@ -26,7 +26,7 @@ deepspeed:
   optimizer:
     type: "AdamW"
     params:
-      lr: 1.3e-7
+      lr: 2e-7
       betas: [0.9, 0.999]
       eps: 1e-8
       weight_decay: 1e-8
@@ -34,7 +34,8 @@ deepspeed:
   scheduler:
     type: "WarmupLR"
     params:
-      warmup_max_lr: 1.3e-7
+      warmup_max_lr: 2e-7
+      warmup_min_lr: 0.0
       warmup_num_steps: 283
       warmup_type: "linear"
 
@@ -100,7 +101,8 @@ deepspeed_critic:
     type: "WarmupLR"
     params:
       warmup_max_lr: 1e-5
-      warmup_num_steps: 150
+      warmup_min_lr: 0.0
+      warmup_num_steps: 30
       warmup_type: "linear"
 
   zero_optimization:  # ZeRO 优化配置（与 TP 兼容，推荐 ZeRO-2/3 用于大模型）
